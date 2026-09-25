@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Havn",
+      "hasCanvas": false,
+      "bodyTextLen": 315,
+      "bodyTextHash": "b0c261f4d610c3b69959dc289e75dcae097d24a7e13c0dd3d2406f06ee231d8c",
+      "bodyTextPrefix": "THE ISLAND WAITS SV EN DE ES FR Havn Settle the island, gather r",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Havn",
+      "hasCanvas": false,
+      "bodyTextLen": 315,
+      "bodyTextHash": "b0c261f4d610c3b69959dc289e75dcae097d24a7e13c0dd3d2406f06ee231d8c",
+      "bodyTextPrefix": "THE ISLAND WAITS SV EN DE ES FR Havn Settle the island, gather r",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-preview.json"
+}
