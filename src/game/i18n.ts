@@ -38,6 +38,9 @@ const extra: Record<Locale, Record<string, string>> = {
     "mp.openSeat": "Väntar",
     "mp.waitingSeat": "Väntar på att {name} ska sätta sig…",
     "mp.computerEmpty": "Låt datorn ta tomma stolar",
+    "ui.youHave": "Dina kort",
+    "ui.nowThen": "nu → efter",
+    "ui.youHold": "du har {n}",
   },
   en: {
     "mp.invite": "Invite friends",
@@ -68,6 +71,9 @@ const extra: Record<Locale, Record<string, string>> = {
     "mp.openSeat": "Waiting",
     "mp.waitingSeat": "Waiting for {name} to sit down…",
     "mp.computerEmpty": "Let the computer take empty seats",
+    "ui.youHave": "Your cards",
+    "ui.nowThen": "now → after",
+    "ui.youHold": "you have {n}",
   },
   de: {
     "mp.invite": "Freunde einladen",
@@ -98,6 +104,9 @@ const extra: Record<Locale, Record<string, string>> = {
     "mp.openSeat": "Wartet",
     "mp.waitingSeat": "Warte, bis {name} Platz nimmt…",
     "mp.computerEmpty": "Computer übernimmt leere Plätze",
+    "ui.youHave": "Deine Karten",
+    "ui.nowThen": "jetzt → danach",
+    "ui.youHold": "du hast {n}",
   },
   es: {
     "mp.invite": "Invitar amigos",
@@ -128,6 +137,9 @@ const extra: Record<Locale, Record<string, string>> = {
     "mp.openSeat": "Esperando",
     "mp.waitingSeat": "Esperando a que {name} se siente…",
     "mp.computerEmpty": "Que el ordenador ocupe los asientos vacíos",
+    "ui.youHave": "Tus cartas",
+    "ui.nowThen": "ahora → después",
+    "ui.youHold": "tienes {n}",
   },
   fr: {
     "mp.invite": "Inviter des amis",
@@ -158,6 +170,9 @@ const extra: Record<Locale, Record<string, string>> = {
     "mp.openSeat": "En attente",
     "mp.waitingSeat": "En attente que {name} s'assoie…",
     "mp.computerEmpty": "Laisser l'ordinateur prendre les sièges vides",
+    "ui.youHave": "Vos cartes",
+    "ui.nowThen": "avant → après",
+    "ui.youHold": "vous en avez {n}",
   },
 };
 

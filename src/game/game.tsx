@@ -2337,7 +2337,7 @@ function ii({ state: e, buildMode: t, disabled: n, onVertex: r, onEdge: i, onHex
   return jsx(`div`, {
     className: `h-full w-full p-1`,
     children: jsxs(`svg`, {
-      viewBox: `-490 -450 980 900`,
+      viewBox: `-500 -460 1000 930`,
       preserveAspectRatio: `xMidYMid meet`,
       width: `100%`,
       height: `100%`,
@@ -2445,8 +2445,8 @@ function ii({ state: e, buildMode: t, disabled: n, onVertex: r, onEdge: i, onHex
         e.board.edges
           .filter((e) => e.port)
           .map((e) => {
-            let t = e.midX + e.ox * 38,
-              n = e.midY + e.oy * 38,
+            let t = e.midX + e.ox * 50,
+              n = e.midY + e.oy * 50,
               r = e.port;
             return jsxs(
               `g`,
@@ -2458,30 +2458,30 @@ function ii({ state: e, buildMode: t, disabled: n, onVertex: r, onEdge: i, onHex
                     x2: t,
                     y2: n,
                     stroke: `#c8c2b6`,
-                    strokeWidth: `6`,
+                    strokeWidth: `8`,
                     strokeLinecap: `round`,
                     opacity: 0.85,
                   }),
                   jsx(`circle`, {
                     cx: t,
                     cy: n,
-                    r: `16`,
+                    r: `28`,
                     fill: `#efe6d2`,
                     stroke: `#3d3428`,
-                    strokeWidth: `2`,
+                    strokeWidth: `2.6`,
                   }),
                   r.kind === `generic`
                     ? jsx(`text`, {
                         x: t,
-                        y: n + 5,
+                        y: n + 6,
                         textAnchor: `middle`,
-                        fontSize: `11`,
+                        fontSize: `16`,
                         fontWeight: `700`,
                         fill: `#2a2218`,
                         fontFamily: `Figtree, sans-serif`,
                         children: `3:1`,
                       })
-                    : jsx(Yr, { resource: r.kind, x: t, y: n, size: 22 }),
+                    : jsx(Yr, { resource: r.kind, x: t, y: n, size: 40 }),
                 ],
               },
               `port-${e.id}`,
@@ -2626,7 +2626,7 @@ function oi({ title: e, children: t, onClose: n }) {
         onClick: n,
       }),
       jsxs(`div`, {
-        className: `relative w-full max-w-md rounded-t-[var(--radius-xl)] border border-border bg-surface p-5 shadow-panel sm:rounded-[var(--radius-xl)]`,
+        className: `relative max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-t-[var(--radius-xl)] border border-border bg-surface p-5 shadow-panel sm:rounded-[var(--radius-xl)]`,
         children: [
           jsxs(`div`, {
             className: `mb-4 flex items-start justify-between gap-3`,
@@ -2747,6 +2747,63 @@ function ci({ state: e, playerId: t, onConfirm: n }) {
     ],
   });
 }
+function wi({ label: e, resources: t, next: n, total: r }) {
+  let a = useT();
+  return jsxs(`div`, {
+    children: [
+      jsxs(`div`, {
+        className: `mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1`,
+        children: [
+          jsx(`p`, {
+            className: `text-xs font-medium tracking-wide text-muted uppercase`,
+            children: e,
+          }),
+          jsx(`p`, {
+            className: `text-xs tabular-nums text-muted`,
+            children: n
+              ? jsxs(Fragment, {
+                  children: [
+                    jsx(`span`, {
+                      className: `mr-2 tracking-wide uppercase`,
+                      children: a(`ui.nowThen`),
+                    }),
+                    r,
+                  ],
+                })
+              : r,
+          }),
+        ],
+      }),
+      jsx(`div`, {
+        className: `grid grid-cols-5 gap-1`,
+        children: V.map((e) => {
+          let i = t[e] ?? 0,
+            o = n ? (n[e] ?? 0) : i,
+            s = !!n && o !== i;
+          return jsxs(
+            `div`,
+            {
+              className: `flex flex-col items-center gap-0.5 rounded-[var(--radius-sm)] bg-surface-2 py-1.5`,
+              title: Y[e],
+              children: [
+                jsx(Zr, { resource: e, size: `sm` }),
+                jsx(`span`, {
+                  className: R(
+                    `font-medium tabular-nums`,
+                    s ? `text-xs` : `text-sm`,
+                    s && o < 0 && `text-danger`,
+                  ),
+                  children: s ? `${i}→${o}` : `${i}`,
+                }),
+              ],
+            },
+            e,
+          );
+        }),
+      }),
+    ],
+  });
+}
 function li({ state: e, playerId: t, onBank: n, onOffer: r, onClose: i }) {
   let a = useT(),
     o = e.players[t],
@@ -2761,8 +2818,13 @@ function li({ state: e, playerId: t, onBank: n, onOffer: r, onClose: i }) {
     title: a(`ui.tradeTitle`),
     onClose: i,
     children: [
+      jsx(wi, {
+        label: a(`ui.youHave`),
+        resources: o.resources,
+        total: String(G(o.resources)),
+      }),
       jsx(`div`, {
-        className: `mb-4 grid grid-cols-2 gap-1 rounded-[var(--radius-md)] bg-surface-2 p-1`,
+        className: `mt-4 mb-4 grid grid-cols-2 gap-1 rounded-[var(--radius-md)] bg-surface-2 p-1`,
         children: [`bank`, `player`].map((e) =>
           jsx(
             `button`,
@@ -2871,7 +2933,10 @@ function di({ bank: e, max: t, onChange: n }) {
           className: `flex items-center gap-2`,
           children: [
             jsx(Zr, { resource: r, size: `sm` }),
-            jsx(`span`, { className: `flex-1 text-xs`, children: Y[r] }),
+            jsx(`span`, {
+              className: `flex-1 text-xs`,
+              children: t ? `${Y[r]} (${t[r]})` : Y[r],
+            }),
             jsx(B, {
               type: `button`,
               size: `icon`,
@@ -2906,12 +2971,23 @@ function fi({ state: e, onRespond: t }) {
     r = e.tradeOffer,
     i = e.players[r.from],
     a = e.players[r.to],
-    o = a ? K(a.resources, r.want) : !1;
+    have = a?.resources ?? W(),
+    next = W();
+  for (let res of V) next[res] = (have[res] ?? 0) - (r.want[res] ?? 0) + (r.give[res] ?? 0);
+  let o = a ? K(a.resources, r.want) : !1,
+    beforeN = G(have),
+    afterN = G(next);
   return jsxs(oi, {
     title: n(`ui.wantsTrade`, { name: i.name }),
     children: [
+      jsx(wi, {
+        label: n(`ui.youHave`),
+        resources: have,
+        next,
+        total: beforeN === afterN ? String(beforeN) : `${beforeN} → ${afterN}`,
+      }),
       jsx(`p`, {
-        className: `mb-2 text-xs font-medium tracking-wide text-muted uppercase`,
+        className: `mt-3 mb-2 text-xs font-medium tracking-wide text-muted uppercase`,
         children: n(`ui.youGet`),
       }),
       jsx(pi, { bank: r.give }),
@@ -2919,7 +2995,7 @@ function fi({ state: e, onRespond: t }) {
         className: `mt-3 mb-2 text-xs font-medium tracking-wide text-muted uppercase`,
         children: n(`ui.youGive`),
       }),
-      jsx(pi, { bank: r.want }),
+      jsx(pi, { bank: r.want, have }),
       !o && jsx(`p`, { className: `mt-3 text-sm text-muted`, children: n(`ui.cantAfford`) }),
       jsxs(`div`, {
         className: `mt-5 grid grid-cols-2 gap-2`,
@@ -2941,29 +3017,43 @@ function fi({ state: e, onRespond: t }) {
     ],
   });
 }
-function pi({ bank: e }) {
+function pi({ bank: e, have: r }) {
   let t = useT(),
     n = V.filter((t) => e[t] > 0);
   return n.length === 0
     ? jsx(`p`, { className: `text-sm text-muted`, children: t(`ui.nothing`) })
     : jsx(`ul`, {
         className: `flex flex-wrap gap-2`,
-        children: n.map((t) =>
-          jsxs(
+        children: n.map((n) => {
+          let a = r ? (r[n] ?? 0) : null,
+            o = a != null && a < e[n];
+          return jsxs(
             `li`,
             {
-              className: `inline-flex items-center gap-2 rounded-[var(--radius-sm)] bg-surface-2 px-2 py-1.5`,
+              className: R(
+                `inline-flex items-center gap-2 rounded-[var(--radius-sm)] bg-surface-2 px-2 py-1.5`,
+                o && `ring-1 ring-danger`,
+              ),
               children: [
-                jsx(Zr, { resource: t, size: `sm` }),
+                jsx(Zr, { resource: n, size: `sm` }),
                 jsxs(`span`, {
                   className: `text-sm`,
-                  children: [e[t], ` `, Y[t].toLowerCase()],
+                  children: [
+                    e[n],
+                    ` `,
+                    Y[n].toLowerCase(),
+                    a != null &&
+                      jsx(`span`, {
+                        className: R(`ml-1.5 text-xs`, o ? `text-danger` : `text-muted`),
+                        children: t(`ui.youHold`, { n: a }),
+                      }),
+                  ],
                 }),
               ],
             },
-            t,
-          ),
-        ),
+            n,
+          );
+        }),
       });
 }
 function mi({ state: e, onCancel: t }) {
