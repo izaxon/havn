@@ -1,0 +1,91 @@
+Prompt till Grok Build – WebMCP i Havn
+Kopiera följande instruktion direkt till Grok Build:
+Implement WebMCP support for AI players in Havn
+I want to extend my existing Havn game so that an external AI assistant, such as ChatGPT, can join and play as a real player through a game invitation link.
+Repository: https://github.com/izaxon/havn⁠�
+Game: https://havn.grok.me/⁠�
+Objective
+I want to play Havn against ChatGPT while having a natural voice conversation with it.
+The AI should be able to inspect the board, understand the current game state, make strategic decisions, perform legal moves, and negotiate trades.
+Important: No separate LLM API key should be required. The AI reasoning should happen inside ChatGPT, not inside Havn.
+1. WebMCP integration
+Implement support for the WebMCP browser standard, compatible with ChatGPT Site Tools where supported.
+Expose the following tools:
+get_game_state()
+Return structured JSON containing:
+Players, current turn and game phase.
+Board layout, hexes, resources, settlements, cities and roads.
+Current player's resources and development cards, where authorized.
+Victory points.
+Current trades and pending decisions.
+Dice results and relevant game history.
+Available legal actions.
+Respect hidden information. The AI must not receive another player's private cards.
+get_legal_actions()
+Return all currently available actions for the AI-controlled player, including their required parameters.
+play_action(action)
+Execute an action using the existing game engine.
+Support all relevant actions, including:
+Building roads, settlements and cities.
+Buying and playing development cards.
+Rolling dice.
+Moving the robber.
+Proposing, accepting and rejecting trades.
+Ending turns.
+Validate every action using the existing game rules.
+get_game_events()
+Return recent moves and events so the AI can understand what happened and discuss them with the human player.
+2. Multiplayer integration
+The AI must be able to join through the existing invitation mechanism, for example:
+https://havn.grok.me/?join=76r8mf
+Preserve the existing WebRTC multiplayer architecture wherever possible.
+The AI must participate as a normal player with its own player identity and turn.
+Do not modify the game's rules or existing human multiplayer functionality.
+WebMCP tools should operate on the actual connected game session, not a simulated copy.
+3. AI interaction
+The AI should be able to:
+Join the game.
+Read the current game state.
+Analyze possible moves.
+Execute a legal move.
+Observe the resulting state.
+Continue until the game ends.
+The AI should also be able to explain its decisions conversationally.
+For example:
+Human: "Why did you build that road?"
+AI: "Because it gives me access to two additional resource tiles and blocks your expansion."
+4. Technical requirements
+Inspect the existing architecture before implementing.
+Follow the project's existing instructions and conventions.
+Reuse the existing game engine and multiplayer protocol.
+Prefer an adapter around existing game actions.
+Use the actual supported WebMCP API; feature-detect browser support rather than assuming it exists.
+Never expose private player information or API credentials.
+Ensure the AI cannot execute moves for another player.
+Provide clear error responses for illegal actions or disconnected sessions.
+Keep the implementation as small and maintainable as possible.
+5. Testing
+Create an automated integration test that:
+Starts a game.
+Adds a second player.
+Retrieves the game state through the new tool interface.
+Retrieves available legal actions.
+Executes a legal action.
+Verifies that the game state updates correctly.
+Verifies that illegal actions are rejected.
+Also verify that existing multiplayer gameplay still works.
+If WebMCP is unavailable in the current browser, report that limitation explicitly rather than simulating a successful AI connection.
+6. Delivery
+Implement the functionality in the existing Havn project.
+Then:
+Run the relevant tests.
+Prepare the application for deployment.
+Report which files were modified.
+Explain how to test the integration using ChatGPT.
+Identify any remaining browser or ChatGPT limitations.
+Success criterion: ChatGPT can use the exposed tools to make a legal move in a live Havn game without an additional LLM API key.
+Do not claim success until a real tool invocation has been verified.
+Nästa steg
+När Grok Build har implementerat och publicerat ändringarna skickar du ett meddelande här.
+Då granskar jag ändringarna i Havn på GitHub⁠�, och vi testar om jag faktiskt kan göra ett drag.
+En viktig reservation: Vi behöver först verifiera detta i en ChatGPT-miljö med stöd för WebMCP. Det är ännu inte bekräftat att verk

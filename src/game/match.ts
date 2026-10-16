@@ -26,7 +26,7 @@ export type MatchBoard = {
   phase: string;
   players: SeatPlayer[];
   discardQueue?: number[];
-  tradeOffer?: { to: number } | null;
+  tradeOffer?: { from?: number; to: number } | null;
 };
 
 const ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
@@ -79,4 +79,12 @@ export function actingPlayerId(state: MatchBoard): number {
   if (state.phase === "discard") return state.discardQueue?.[0] ?? state.currentPlayer;
   if (state.tradeOffer) return state.tradeOffer.to;
   return state.currentPlayer;
+}
+
+/** A remote peer may only submit the action that belongs to its own seat. */
+export function seatMayPlay(state: MatchBoard, seat: number, action: GameAction): boolean {
+  if (seat < 0) return false;
+  if (action.type === "cancelTrade") return state.tradeOffer?.from === seat;
+  if (action.type === "respondTrade") return state.tradeOffer?.to === seat;
+  return actingPlayerId(state) === seat;
 }

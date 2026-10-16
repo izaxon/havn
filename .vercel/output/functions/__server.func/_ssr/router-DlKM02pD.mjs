@@ -1,8 +1,8 @@
 import { o as __toESM } from "../_runtime.mjs";
-import { R as require_react, f as createRouter, g as createRootRoute, h as createFileRoute, l as Scripts, m as lazyRouteComponent, p as Outlet, u as HeadContent, v as useRouter, y as require_jsx_runtime } from "../_libs/@tanstack/react-router+[...].mjs";
+import { _ as createFileRoute, b as useRouter, d as Scripts, f as HeadContent, g as lazyRouteComponent, h as Outlet, m as createRouter, q as require_react, v as createRootRoute, x as require_jsx_runtime } from "../_libs/@tanstack/react-router+[...].mjs";
 import { a as TriangleAlert } from "../_libs/lucide-react.mjs";
 import { a as number, c as union, i as literal, l as unknown, n as _enum, o as object, r as discriminatedUnion, s as string, t as number$1 } from "../_libs/zod.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/router-BY_tbpsG.js
+//#region node_modules/.nitro/vite/services/ssr/assets/router-DlKM02pD.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var __defProp = Object.defineProperty;
@@ -306,7 +306,7 @@ function PreviewHostBridge() {
 	}, [router]);
 	return null;
 }
-var styles_default = "/assets/styles-DYq1HrhP.css";
+var styles_default = "/assets/styles-Bnl_-cQL.css";
 var APP_NAME = "Havn";
 var Route$3 = createRootRoute({
 	head: () => ({
@@ -398,11 +398,19 @@ function actingPlayerId(state) {
 	if (state.tradeOffer) return state.tradeOffer.to;
 	return state.currentPlayer;
 }
-var $$splitComponentImporter = () => import("./routes-D5exmPev.mjs");
+/** A remote peer may only submit the action that belongs to its own seat. */
+function seatMayPlay(state, seat, action) {
+	if (seat < 0) return false;
+	if (action.type === "cancelTrade") return state.tradeOffer?.from === seat;
+	if (action.type === "respondTrade") return state.tradeOffer?.to === seat;
+	return actingPlayerId(state) === seat;
+}
+var $$splitComponentImporter = () => import("./routes-DGgbPOSt.mjs");
 var Route$2 = createFileRoute("/")({
 	validateSearch: (raw) => ({
 		join: typeof raw.join === "string" && isRoomCode(raw.join) ? raw.join : void 0,
-		match: typeof raw.match === "string" && isRoomCode(raw.match) ? raw.match : void 0
+		match: typeof raw.match === "string" && isRoomCode(raw.match) ? raw.match : void 0,
+		name: typeof raw.name === "string" && raw.name.trim() ? raw.name.trim().slice(0, 24) : void 0
 	}),
 	component: lazyRouteComponent($$splitComponentImporter, "component")
 });
@@ -760,4 +768,4 @@ function getRouter() {
 	});
 }
 //#endregion
-export { friendSeatIds as a, isRoomCode as c, asBoard as i, makeRoomCode as l, Route$2 as n, inviteUrl as o, actingPlayerId as r, isNetMsg as s, router_exports as t };
+export { friendSeatIds as a, isRoomCode as c, asBoard as i, makeRoomCode as l, Route$2 as n, inviteUrl as o, actingPlayerId as r, isNetMsg as s, router_exports as t, seatMayPlay as u };

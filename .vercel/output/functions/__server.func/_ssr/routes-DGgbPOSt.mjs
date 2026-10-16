@@ -1,11 +1,11 @@
 import { o as __toESM } from "../_runtime.mjs";
-import { R as require_react, _ as useNavigate, y as require_jsx_runtime } from "../_libs/@tanstack/react-router+[...].mjs";
+import { q as require_react, x as require_jsx_runtime, y as useNavigate } from "../_libs/@tanstack/react-router+[...].mjs";
 import { _ as CircleDot, b as BookOpen, c as Route, d as LogOut, f as Link2, g as Copy, h as CreditCard, i as User, l as Plus, m as Handshake, n as VolumeX, o as Trash2, p as House, r as Volume2, s as SkipForward, t as X, u as Map$1, v as Castle, y as Bot } from "../_libs/lucide-react.mjs";
-import { a as friendSeatIds, c as isRoomCode, i as asBoard, l as makeRoomCode, n as Route$2, o as inviteUrl, r as actingPlayerId, s as isNetMsg } from "./router-BY_tbpsG.mjs";
+import { a as friendSeatIds, c as isRoomCode, i as asBoard, l as makeRoomCode, n as Route$2, o as inviteUrl, r as actingPlayerId, s as isNetMsg, u as seatMayPlay } from "./router-DlKM02pD.mjs";
 import { n as clsx, t as cva } from "../_libs/class-variance-authority+clsx.mjs";
 import { t as twMerge } from "../_libs/tailwind-merge.mjs";
 import { t as create } from "../_libs/zustand.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-D5exmPev.js
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-DGgbPOSt.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 function cn(...inputs) {
@@ -1246,7 +1246,10 @@ var extra = {
 		"mp.connectedAs": "Ansluten",
 		"mp.openSeat": "Väntar",
 		"mp.waitingSeat": "Väntar på att {name} ska sätta sig…",
-		"mp.computerEmpty": "Låt datorn ta tomma stolar"
+		"mp.computerEmpty": "Låt datorn ta tomma stolar",
+		"ui.youHave": "Dina kort",
+		"ui.nowThen": "nu → efter",
+		"ui.youHold": "du har {n}"
 	},
 	en: {
 		"mp.invite": "Invite friends",
@@ -1276,7 +1279,10 @@ var extra = {
 		"mp.connectedAs": "Seated",
 		"mp.openSeat": "Waiting",
 		"mp.waitingSeat": "Waiting for {name} to sit down…",
-		"mp.computerEmpty": "Let the computer take empty seats"
+		"mp.computerEmpty": "Let the computer take empty seats",
+		"ui.youHave": "Your cards",
+		"ui.nowThen": "now → after",
+		"ui.youHold": "you have {n}"
 	},
 	de: {
 		"mp.invite": "Freunde einladen",
@@ -1306,7 +1312,10 @@ var extra = {
 		"mp.connectedAs": "Verbunden",
 		"mp.openSeat": "Wartet",
 		"mp.waitingSeat": "Warte, bis {name} Platz nimmt…",
-		"mp.computerEmpty": "Computer übernimmt leere Plätze"
+		"mp.computerEmpty": "Computer übernimmt leere Plätze",
+		"ui.youHave": "Deine Karten",
+		"ui.nowThen": "jetzt → danach",
+		"ui.youHold": "du hast {n}"
 	},
 	es: {
 		"mp.invite": "Invitar amigos",
@@ -1336,7 +1345,10 @@ var extra = {
 		"mp.connectedAs": "Sentado",
 		"mp.openSeat": "Esperando",
 		"mp.waitingSeat": "Esperando a que {name} se siente…",
-		"mp.computerEmpty": "Que el ordenador ocupe los asientos vacíos"
+		"mp.computerEmpty": "Que el ordenador ocupe los asientos vacíos",
+		"ui.youHave": "Tus cartas",
+		"ui.nowThen": "ahora → después",
+		"ui.youHold": "tienes {n}"
 	},
 	fr: {
 		"mp.invite": "Inviter des amis",
@@ -1366,7 +1378,10 @@ var extra = {
 		"mp.connectedAs": "Assis",
 		"mp.openSeat": "En attente",
 		"mp.waitingSeat": "En attente que {name} s'assoie…",
-		"mp.computerEmpty": "Laisser l'ordinateur prendre les sièges vides"
+		"mp.computerEmpty": "Laisser l'ordinateur prendre les sièges vides",
+		"ui.youHave": "Vos cartes",
+		"ui.nowThen": "avant → après",
+		"ui.youHold": "vous en avez {n}"
 	}
 };
 function lookup(obj, path) {
@@ -2413,6 +2428,13 @@ function nr(e, t) {
 		};
 		throw e;
 	}
+}
+function tryAction(state, action) {
+	if (!state) return {
+		ok: !1,
+		error: `No game is running.`
+	};
+	return nr(state, action);
 }
 function rr(e, t) {
 	return K(e, t);
@@ -3730,7 +3752,7 @@ function ii({ state: e, buildMode: t, disabled: n, onVertex: r, onEdge: i, onHex
 	return (0, import_jsx_runtime.jsx)(`div`, {
 		className: `h-full w-full p-1`,
 		children: (0, import_jsx_runtime.jsxs)(`svg`, {
-			viewBox: `-490 -450 980 900`,
+			viewBox: `-500 -460 1000 930`,
 			preserveAspectRatio: `xMidYMid meet`,
 			width: `100%`,
 			height: `100%`,
@@ -3815,7 +3837,7 @@ function ii({ state: e, buildMode: t, disabled: n, onVertex: r, onEdge: i, onHex
 					] }, t.id);
 				}),
 				e.board.edges.filter((e) => e.port).map((e) => {
-					let t = e.midX + e.ox * 38, n = e.midY + e.oy * 38, r = e.port;
+					let t = e.midX + e.ox * 50, n = e.midY + e.oy * 50, r = e.port;
 					return (0, import_jsx_runtime.jsxs)(`g`, { children: [
 						(0, import_jsx_runtime.jsx)(`line`, {
 							x1: e.midX,
@@ -3823,23 +3845,23 @@ function ii({ state: e, buildMode: t, disabled: n, onVertex: r, onEdge: i, onHex
 							x2: t,
 							y2: n,
 							stroke: `#c8c2b6`,
-							strokeWidth: `6`,
+							strokeWidth: `8`,
 							strokeLinecap: `round`,
 							opacity: .85
 						}),
 						(0, import_jsx_runtime.jsx)(`circle`, {
 							cx: t,
 							cy: n,
-							r: `16`,
+							r: `28`,
 							fill: `#efe6d2`,
 							stroke: `#3d3428`,
-							strokeWidth: `2`
+							strokeWidth: `2.6`
 						}),
 						r.kind === `generic` ? (0, import_jsx_runtime.jsx)(`text`, {
 							x: t,
-							y: n + 5,
+							y: n + 6,
 							textAnchor: `middle`,
-							fontSize: `11`,
+							fontSize: `16`,
 							fontWeight: `700`,
 							fill: `#2a2218`,
 							fontFamily: `Figtree, sans-serif`,
@@ -3848,7 +3870,7 @@ function ii({ state: e, buildMode: t, disabled: n, onVertex: r, onEdge: i, onHex
 							resource: r.kind,
 							x: t,
 							y: n,
-							size: 22
+							size: 40
 						})
 					] }, `port-${e.id}`);
 				}),
@@ -3957,7 +3979,7 @@ function oi({ title: e, children: t, onClose: n }) {
 			"aria-label": r(`ui.close`),
 			onClick: n
 		}), (0, import_jsx_runtime.jsxs)(`div`, {
-			className: `relative w-full max-w-md rounded-t-[var(--radius-xl)] border border-border bg-surface p-5 shadow-panel sm:rounded-[var(--radius-xl)]`,
+			className: `relative max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-t-[var(--radius-xl)] border border-border bg-surface p-5 shadow-panel sm:rounded-[var(--radius-xl)]`,
 			children: [(0, import_jsx_runtime.jsxs)(`div`, {
 				className: `mb-4 flex items-start justify-between gap-3`,
 				children: [(0, import_jsx_runtime.jsx)(`h2`, {
@@ -4072,92 +4094,132 @@ function ci({ state: e, playerId: t, onConfirm: n }) {
 		]
 	});
 }
+function wi({ label: e, resources: t, next: n, total: r }) {
+	let a = useT();
+	return (0, import_jsx_runtime.jsxs)(`div`, { children: [(0, import_jsx_runtime.jsxs)(`div`, {
+		className: `mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1`,
+		children: [(0, import_jsx_runtime.jsx)(`p`, {
+			className: `text-xs font-medium tracking-wide text-muted uppercase`,
+			children: e
+		}), (0, import_jsx_runtime.jsx)(`p`, {
+			className: `text-xs tabular-nums text-muted`,
+			children: n ? (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [(0, import_jsx_runtime.jsx)(`span`, {
+				className: `mr-2 tracking-wide uppercase`,
+				children: a(`ui.nowThen`)
+			}), r] }) : r
+		})]
+	}), (0, import_jsx_runtime.jsx)(`div`, {
+		className: `grid grid-cols-5 gap-1`,
+		children: V.map((e) => {
+			let i = t[e] ?? 0, o = n ? n[e] ?? 0 : i, s = !!n && o !== i;
+			return (0, import_jsx_runtime.jsxs)(`div`, {
+				className: `flex flex-col items-center gap-0.5 rounded-[var(--radius-sm)] bg-surface-2 py-1.5`,
+				title: Y[e],
+				children: [(0, import_jsx_runtime.jsx)(Zr, {
+					resource: e,
+					size: `sm`
+				}), (0, import_jsx_runtime.jsx)(`span`, {
+					className: R(`font-medium tabular-nums`, s ? `text-xs` : `text-sm`, s && o < 0 && `text-danger`),
+					children: s ? `${i}→${o}` : `${i}`
+				})]
+			}, e);
+		})
+	})] });
+}
 function li({ state: e, playerId: t, onBank: n, onOffer: r, onClose: i }) {
 	let a = useT(), o = e.players[t], [s, c] = (0, import_react.useState)(`bank`), [l, d] = (0, import_react.useState)(`wood`), [f, p] = (0, import_react.useState)(`brick`), [m, h] = (0, import_react.useState)(e.players.find((e) => e.id !== t)?.id ?? 0), [g, _] = (0, import_react.useState)(W), [v, y] = (0, import_react.useState)(W), b = An(e, t, l);
 	return (0, import_jsx_runtime.jsxs)(oi, {
 		title: a(`ui.tradeTitle`),
 		onClose: i,
-		children: [(0, import_jsx_runtime.jsx)(`div`, {
-			className: `mb-4 grid grid-cols-2 gap-1 rounded-[var(--radius-md)] bg-surface-2 p-1`,
-			children: [`bank`, `player`].map((e) => (0, import_jsx_runtime.jsx)(`button`, {
-				type: `button`,
-				className: R(`h-10 rounded-[var(--radius-sm)] text-sm font-medium`, s === e ? `bg-surface text-fg` : `text-muted`),
-				onClick: () => c(e),
-				children: a(e === `bank` ? `ui.bank` : `ui.players`)
-			}, e))
-		}), s === `bank` ? (0, import_jsx_runtime.jsxs)(`div`, {
-			className: `space-y-4`,
-			children: [
-				(0, import_jsx_runtime.jsx)(`p`, {
-					className: `text-sm text-muted`,
-					children: a(`ui.rate`, {
-						resource: Y[l].toLowerCase(),
-						rate: b
-					})
-				}),
-				(0, import_jsx_runtime.jsx)(ui, {
-					label: a(`ui.give`),
-					value: l,
-					onChange: d
-				}),
-				(0, import_jsx_runtime.jsx)(ui, {
-					label: a(`ui.get`),
-					value: f,
-					onChange: p
-				}),
-				(0, import_jsx_runtime.jsx)(B, {
+		children: [
+			(0, import_jsx_runtime.jsx)(wi, {
+				label: a(`ui.youHave`),
+				resources: o.resources,
+				total: String(G(o.resources))
+			}),
+			(0, import_jsx_runtime.jsx)(`div`, {
+				className: `mt-4 mb-4 grid grid-cols-2 gap-1 rounded-[var(--radius-md)] bg-surface-2 p-1`,
+				children: [`bank`, `player`].map((e) => (0, import_jsx_runtime.jsx)(`button`, {
 					type: `button`,
-					className: `w-full`,
-					disabled: l === f || o.resources[l] < b,
-					onClick: () => n(l, f),
-					children: a(`ui.swap`, {
-						rate: b,
-						give: Y[l].toLowerCase(),
-						get: Y[f].toLowerCase()
+					className: R(`h-10 rounded-[var(--radius-sm)] text-sm font-medium`, s === e ? `bg-surface text-fg` : `text-muted`),
+					onClick: () => c(e),
+					children: a(e === `bank` ? `ui.bank` : `ui.players`)
+				}, e))
+			}),
+			s === `bank` ? (0, import_jsx_runtime.jsxs)(`div`, {
+				className: `space-y-4`,
+				children: [
+					(0, import_jsx_runtime.jsx)(`p`, {
+						className: `text-sm text-muted`,
+						children: a(`ui.rate`, {
+							resource: Y[l].toLowerCase(),
+							rate: b
+						})
+					}),
+					(0, import_jsx_runtime.jsx)(ui, {
+						label: a(`ui.give`),
+						value: l,
+						onChange: d
+					}),
+					(0, import_jsx_runtime.jsx)(ui, {
+						label: a(`ui.get`),
+						value: f,
+						onChange: p
+					}),
+					(0, import_jsx_runtime.jsx)(B, {
+						type: `button`,
+						className: `w-full`,
+						disabled: l === f || o.resources[l] < b,
+						onClick: () => n(l, f),
+						children: a(`ui.swap`, {
+							rate: b,
+							give: Y[l].toLowerCase(),
+							get: Y[f].toLowerCase()
+						})
 					})
-				})
-			]
-		}) : (0, import_jsx_runtime.jsxs)(`div`, {
-			className: `space-y-3`,
-			children: [
-				(0, import_jsx_runtime.jsxs)(`label`, {
-					className: `block text-sm text-muted`,
-					children: [a(`ui.to`), (0, import_jsx_runtime.jsx)(`select`, {
-						className: `mt-1 h-11 w-full rounded-[var(--radius-sm)] border border-border bg-surface-2 px-3 text-fg`,
-						value: m,
-						onChange: (e) => h(Number(e.target.value)),
-						children: e.players.filter((e) => e.id !== t).map((e) => (0, import_jsx_runtime.jsx)(`option`, {
-							value: e.id,
-							children: e.name
-						}, e.id))
-					})]
-				}),
-				(0, import_jsx_runtime.jsx)(`p`, {
-					className: `text-xs text-muted`,
-					children: a(`ui.youGive`)
-				}),
-				(0, import_jsx_runtime.jsx)(di, {
-					bank: g,
-					max: o.resources,
-					onChange: _
-				}),
-				(0, import_jsx_runtime.jsx)(`p`, {
-					className: `text-xs text-muted`,
-					children: a(`ui.youWant`)
-				}),
-				(0, import_jsx_runtime.jsx)(di, {
-					bank: v,
-					onChange: y
-				}),
-				(0, import_jsx_runtime.jsx)(B, {
-					type: `button`,
-					className: `w-full`,
-					disabled: G(g) === 0 || G(v) === 0,
-					onClick: () => r(m, g, v),
-					children: a(`ui.send`)
-				})
-			]
-		})]
+				]
+			}) : (0, import_jsx_runtime.jsxs)(`div`, {
+				className: `space-y-3`,
+				children: [
+					(0, import_jsx_runtime.jsxs)(`label`, {
+						className: `block text-sm text-muted`,
+						children: [a(`ui.to`), (0, import_jsx_runtime.jsx)(`select`, {
+							className: `mt-1 h-11 w-full rounded-[var(--radius-sm)] border border-border bg-surface-2 px-3 text-fg`,
+							value: m,
+							onChange: (e) => h(Number(e.target.value)),
+							children: e.players.filter((e) => e.id !== t).map((e) => (0, import_jsx_runtime.jsx)(`option`, {
+								value: e.id,
+								children: e.name
+							}, e.id))
+						})]
+					}),
+					(0, import_jsx_runtime.jsx)(`p`, {
+						className: `text-xs text-muted`,
+						children: a(`ui.youGive`)
+					}),
+					(0, import_jsx_runtime.jsx)(di, {
+						bank: g,
+						max: o.resources,
+						onChange: _
+					}),
+					(0, import_jsx_runtime.jsx)(`p`, {
+						className: `text-xs text-muted`,
+						children: a(`ui.youWant`)
+					}),
+					(0, import_jsx_runtime.jsx)(di, {
+						bank: v,
+						onChange: y
+					}),
+					(0, import_jsx_runtime.jsx)(B, {
+						type: `button`,
+						className: `w-full`,
+						disabled: G(g) === 0 || G(v) === 0,
+						onClick: () => r(m, g, v),
+						children: a(`ui.send`)
+					})
+				]
+			})
+		]
 	});
 }
 function ui({ label: e, value: t, onChange: n }) {
@@ -4190,7 +4252,7 @@ function di({ bank: e, max: t, onChange: n }) {
 				}),
 				(0, import_jsx_runtime.jsx)(`span`, {
 					className: `flex-1 text-xs`,
-					children: Y[r]
+					children: t ? `${Y[r]} (${t[r]})` : Y[r]
 				}),
 				(0, import_jsx_runtime.jsx)(B, {
 					type: `button`,
@@ -4225,12 +4287,20 @@ function di({ bank: e, max: t, onChange: n }) {
 	});
 }
 function fi({ state: e, onRespond: t }) {
-	let n = useT(), r = e.tradeOffer, i = e.players[r.from], a = e.players[r.to], o = a ? K(a.resources, r.want) : !1;
+	let n = useT(), r = e.tradeOffer, i = e.players[r.from], a = e.players[r.to], have = a?.resources ?? W(), next = W();
+	for (let res of V) next[res] = (have[res] ?? 0) - (r.want[res] ?? 0) + (r.give[res] ?? 0);
+	let o = a ? K(a.resources, r.want) : !1, beforeN = G(have), afterN = G(next);
 	return (0, import_jsx_runtime.jsxs)(oi, {
 		title: n(`ui.wantsTrade`, { name: i.name }),
 		children: [
+			(0, import_jsx_runtime.jsx)(wi, {
+				label: n(`ui.youHave`),
+				resources: have,
+				next,
+				total: beforeN === afterN ? String(beforeN) : `${beforeN} → ${afterN}`
+			}),
 			(0, import_jsx_runtime.jsx)(`p`, {
-				className: `mb-2 text-xs font-medium tracking-wide text-muted uppercase`,
+				className: `mt-3 mb-2 text-xs font-medium tracking-wide text-muted uppercase`,
 				children: n(`ui.youGet`)
 			}),
 			(0, import_jsx_runtime.jsx)(pi, { bank: r.give }),
@@ -4238,7 +4308,10 @@ function fi({ state: e, onRespond: t }) {
 				className: `mt-3 mb-2 text-xs font-medium tracking-wide text-muted uppercase`,
 				children: n(`ui.youGive`)
 			}),
-			(0, import_jsx_runtime.jsx)(pi, { bank: r.want }),
+			(0, import_jsx_runtime.jsx)(pi, {
+				bank: r.want,
+				have
+			}),
 			!o && (0, import_jsx_runtime.jsx)(`p`, {
 				className: `mt-3 text-sm text-muted`,
 				children: n(`ui.cantAfford`)
@@ -4260,27 +4333,34 @@ function fi({ state: e, onRespond: t }) {
 		]
 	});
 }
-function pi({ bank: e }) {
+function pi({ bank: e, have: r }) {
 	let t = useT(), n = V.filter((t) => e[t] > 0);
 	return n.length === 0 ? (0, import_jsx_runtime.jsx)(`p`, {
 		className: `text-sm text-muted`,
 		children: t(`ui.nothing`)
 	}) : (0, import_jsx_runtime.jsx)(`ul`, {
 		className: `flex flex-wrap gap-2`,
-		children: n.map((t) => (0, import_jsx_runtime.jsxs)(`li`, {
-			className: `inline-flex items-center gap-2 rounded-[var(--radius-sm)] bg-surface-2 px-2 py-1.5`,
-			children: [(0, import_jsx_runtime.jsx)(Zr, {
-				resource: t,
-				size: `sm`
-			}), (0, import_jsx_runtime.jsxs)(`span`, {
-				className: `text-sm`,
-				children: [
-					e[t],
-					` `,
-					Y[t].toLowerCase()
-				]
-			})]
-		}, t))
+		children: n.map((n) => {
+			let a = r ? r[n] ?? 0 : null, o = a != null && a < e[n];
+			return (0, import_jsx_runtime.jsxs)(`li`, {
+				className: R(`inline-flex items-center gap-2 rounded-[var(--radius-sm)] bg-surface-2 px-2 py-1.5`, o && `ring-1 ring-danger`),
+				children: [(0, import_jsx_runtime.jsx)(Zr, {
+					resource: n,
+					size: `sm`
+				}), (0, import_jsx_runtime.jsxs)(`span`, {
+					className: `text-sm`,
+					children: [
+						e[n],
+						` `,
+						Y[n].toLowerCase(),
+						a != null && (0, import_jsx_runtime.jsx)(`span`, {
+							className: R(`ml-1.5 text-xs`, o ? `text-danger` : `text-muted`),
+							children: t(`ui.youHold`, { n: a })
+						})
+					]
+				})]
+			}, n);
+		})
 	});
 }
 function mi({ state: e, onCancel: t }) {
@@ -5522,7 +5602,17 @@ function MatchBridgeInner({ room, name }) {
 				return;
 			}
 			if (msg.t === "action") {
-				if (role === "host") dispatch(msg.action);
+				if (role !== "host") return;
+				const seat = seatMap.current.get(from);
+				const liveBoard = asBoard(useGame.getState().state);
+				if (seat == null || !liveBoard || !seatMayPlay(liveBoard, seat, msg.action)) {
+					p2p.send({
+						t: "error",
+						message: "Only the player whose turn it is can play from that seat."
+					}, from);
+					return;
+				}
+				dispatch(msg.action);
 				return;
 			}
 			if (msg.t === "error") {
@@ -5861,7 +5951,519 @@ function InviteCard({ link, room, connecting, failed, peers, board, claimed, onD
 		]
 	});
 }
-function GameApp({ join, match }) {
+/** Read-only view and legal-action list for an external assistant. Rules stay in the engine. */
+var RESOURCES = [
+	"wood",
+	"brick",
+	"wool",
+	"grain",
+	"ore"
+];
+var COSTS = {
+	road: {
+		wood: 1,
+		brick: 1
+	},
+	settlement: {
+		wood: 1,
+		brick: 1,
+		wool: 1,
+		grain: 1
+	},
+	city: {
+		grain: 2,
+		ore: 3
+	},
+	development: {
+		wool: 1,
+		grain: 1,
+		ore: 1
+	}
+};
+function apply(state, action) {
+	return tryAction(state, action);
+}
+function asLive(state) {
+	if (!asBoard(state)) return null;
+	const s = state;
+	if (!s.board?.hexes || !s.board.vertices || !s.board.edges) return null;
+	return s;
+}
+function total(bag) {
+	return RESOURCES.reduce((n, key) => n + (bag?.[key] ?? 0), 0);
+}
+function canPay(have, cost) {
+	return RESOURCES.every((key) => (have?.[key] ?? 0) >= (cost[key] ?? 0));
+}
+function emptyBag() {
+	return {
+		wood: 0,
+		brick: 0,
+		wool: 0,
+		grain: 0,
+		ore: 0
+	};
+}
+function publicPoints(state, player) {
+	let points = 0;
+	for (const vertex of state.board.vertices) {
+		if (vertex.building?.player !== player.id) continue;
+		points += vertex.building.type === "city" ? 2 : 1;
+	}
+	if (player.hasLongestRoad) points += 2;
+	if (player.hasLargestArmy) points += 2;
+	return points;
+}
+function projectPlayer(state, player, viewerId) {
+	const mine = player.id === viewerId;
+	const shown = publicPoints(state, player);
+	return {
+		id: player.id,
+		name: player.name,
+		isYou: mine,
+		isComputer: player.isAi,
+		victoryPoints: mine ? shown + (player.vpCards ?? 0) : shown,
+		hiddenVictoryPoints: mine ? player.vpCards ?? 0 : null,
+		resources: mine ? {
+			...emptyBag(),
+			...player.resources
+		} : {
+			hidden: true,
+			total: total(player.resources)
+		},
+		developmentCards: mine ? {
+			playable: [...player.hand ?? []],
+			boughtThisTurn: [...player.newHand ?? []]
+		} : {
+			hidden: true,
+			count: (player.hand?.length ?? 0) + (player.newHand?.length ?? 0)
+		},
+		pieces: {
+			roadsLeft: player.roadsLeft,
+			settlementsLeft: player.settlementsLeft,
+			citiesLeft: player.citiesLeft
+		},
+		knightsPlayed: player.knightsPlayed,
+		longestRoad: player.hasLongestRoad,
+		largestArmy: player.hasLargestArmy
+	};
+}
+function yourTurn(state, viewerId) {
+	if (viewerId < 0) return false;
+	const board = asBoard(state);
+	if (!board) return false;
+	return actingPlayerId(board) === viewerId;
+}
+function keep(state, action, into) {
+	if (apply(state, action).ok) into.push(action);
+}
+function discards(have, need) {
+	const out = [];
+	const walk = (index, left, acc) => {
+		if (out.length >= 24) return;
+		if (index === RESOURCES.length) {
+			if (left === 0) out.push({ ...acc });
+			return;
+		}
+		const key = RESOURCES[index];
+		const max = Math.min(have[key] ?? 0, left);
+		for (let n = 0; n <= max; n++) {
+			acc[key] = n;
+			walk(index + 1, left - n, acc);
+		}
+	};
+	walk(0, need, emptyBag());
+	return out;
+}
+function legalActions(state, viewerId) {
+	if (viewerId < 0) return [];
+	const offer = state.tradeOffer;
+	if (offer) {
+		if (offer.from === viewerId && offer.to !== viewerId) return [{ type: "cancelTrade" }];
+		if (offer.to !== viewerId) return [];
+		const actions = [{
+			type: "respondTrade",
+			accept: false
+		}];
+		const giver = state.players[offer.from];
+		const taker = state.players[offer.to];
+		if (giver && taker && canPay(giver.resources, offer.give) && canPay(taker.resources, offer.want)) actions.unshift({
+			type: "respondTrade",
+			accept: true
+		});
+		return actions.filter((action) => apply(state, action).ok);
+	}
+	if (!yourTurn(state, viewerId)) return [];
+	const actions = [];
+	const phase = state.phase;
+	if (phase === "setup") {
+		if (state.setupNeed === "settlement") for (const vertex of state.board.vertices) keep(state, {
+			type: "placeSettlement",
+			vertexId: vertex.id,
+			hexes: vertex.hexIds ?? []
+		}, actions);
+		else for (const edge of state.board.edges) keep(state, {
+			type: "placeRoad",
+			edgeId: edge.id,
+			a: edge.a,
+			b: edge.b
+		}, actions);
+		return actions;
+	}
+	if (phase === "roll") {
+		keep(state, { type: "roll" }, actions);
+		keep(state, { type: "playKnight" }, actions);
+		return actions;
+	}
+	if (phase === "discard") {
+		const me = state.players[viewerId];
+		if (!me) return [];
+		const need = Math.floor(total(me.resources) / 2);
+		for (const resources of discards(me.resources, need)) keep(state, {
+			type: "discard",
+			resources,
+			count: need
+		}, actions);
+		return actions;
+	}
+	if (phase === "robber") {
+		for (const hex of state.board.hexes) {
+			if (hex.id === state.robberHexId) continue;
+			keep(state, {
+				type: "moveRobber",
+				hexId: hex.id,
+				terrain: hex.terrain,
+				number: hex.number,
+				stealFrom: null
+			}, actions);
+			for (const player of state.players) {
+				if (player.id === viewerId) continue;
+				keep(state, {
+					type: "moveRobber",
+					hexId: hex.id,
+					terrain: hex.terrain,
+					number: hex.number,
+					stealFrom: player.id
+				}, actions);
+			}
+		}
+		return actions;
+	}
+	if (phase === "roadBuilding") {
+		for (const edge of state.board.edges) keep(state, {
+			type: "placeRoad",
+			edgeId: edge.id,
+			a: edge.a,
+			b: edge.b
+		}, actions);
+		keep(state, { type: "skipFreeRoad" }, actions);
+		return actions;
+	}
+	if (phase !== "main") return actions;
+	for (const edge of state.board.edges) keep(state, {
+		type: "placeRoad",
+		edgeId: edge.id,
+		a: edge.a,
+		b: edge.b
+	}, actions);
+	for (const vertex of state.board.vertices) {
+		keep(state, {
+			type: "placeSettlement",
+			vertexId: vertex.id,
+			hexes: vertex.hexIds ?? []
+		}, actions);
+		keep(state, {
+			type: "placeCity",
+			vertexId: vertex.id
+		}, actions);
+	}
+	keep(state, { type: "buyDev" }, actions);
+	keep(state, { type: "playKnight" }, actions);
+	keep(state, { type: "playRoads" }, actions);
+	for (const resource of RESOURCES) keep(state, {
+		type: "playMonopoly",
+		resource
+	}, actions);
+	for (const a of RESOURCES) for (const b of RESOURCES) keep(state, {
+		type: "playPlenty",
+		a,
+		b
+	}, actions);
+	for (const give of RESOURCES) for (const get of RESOURCES) {
+		if (give === get) continue;
+		keep(state, {
+			type: "bankTrade",
+			give,
+			get
+		}, actions);
+	}
+	for (const other of state.players) {
+		if (other.id === viewerId) continue;
+		for (const give of RESOURCES) for (const want of RESOURCES) {
+			if (give === want) continue;
+			const giveBag = emptyBag();
+			const wantBag = emptyBag();
+			giveBag[give] = 1;
+			wantBag[want] = 1;
+			keep(state, {
+				type: "offerTrade",
+				to: other.id,
+				give: giveBag,
+				want: wantBag
+			}, actions);
+		}
+	}
+	keep(state, { type: "endTurn" }, actions);
+	return actions;
+}
+function projectState(state, session) {
+	const viewerId = session.yourSeat;
+	const you = state.players[viewerId];
+	return {
+		ok: true,
+		game: "Havn",
+		rules: "Catan rules. First to 10 victory points wins. A knight may be played before the roll. Cards bought this turn cannot be played yet.",
+		costs: COSTS,
+		session: {
+			...session,
+			yourName: you?.name ?? null,
+			yourTurn: yourTurn(state, viewerId)
+		},
+		phase: state.phase,
+		setupNeed: state.phase === "setup" ? state.setupNeed : null,
+		turnNumber: state.turnNumber,
+		revision: state.revision,
+		currentPlayer: state.currentPlayer,
+		winnerId: state.winnerId,
+		robberHexId: state.robberHexId,
+		lastRoll: state.lastRoll,
+		pendingFreeRoads: state.phase === "roadBuilding" ? state.pendingFreeRoads : 0,
+		bank: {
+			...emptyBag(),
+			...state.bank
+		},
+		developmentCardsLeft: state.deck?.length ?? 0,
+		tradeOffer: state.tradeOffer ? {
+			from: state.tradeOffer.from,
+			to: state.tradeOffer.to,
+			youGive: viewerId === state.tradeOffer.to ? state.tradeOffer.want : state.tradeOffer.give,
+			youGet: viewerId === state.tradeOffer.to ? state.tradeOffer.give : state.tradeOffer.want
+		} : null,
+		discardQueue: state.discardQueue ?? [],
+		players: state.players.map((player) => projectPlayer(state, player, viewerId)),
+		hexes: state.board.hexes.map((hex) => ({
+			id: hex.id,
+			q: hex.q,
+			r: hex.r,
+			terrain: hex.terrain,
+			number: hex.number,
+			robber: hex.id === state.robberHexId
+		})),
+		vertices: state.board.vertices.map((vertex) => ({
+			id: vertex.id,
+			hexes: vertex.hexIds ?? [],
+			building: vertex.building ? {
+				playerId: vertex.building.player,
+				type: vertex.building.type
+			} : null,
+			port: vertex.port?.kind ?? null
+		})),
+		roads: state.board.edges.filter((edge) => edge.road).map((edge) => ({
+			edgeId: edge.id,
+			playerId: edge.road.player,
+			a: edge.a,
+			b: edge.b
+		})),
+		ports: state.board.edges.filter((edge) => edge.port).map((edge) => ({
+			edgeId: edge.id,
+			kind: edge.port.kind,
+			rate: edge.port.kind === "generic" ? "3:1" : "2:1"
+		})),
+		legalActions: legalActions(state, viewerId)
+	};
+}
+function recentEvents(state, session) {
+	return {
+		ok: true,
+		revision: state.revision,
+		phase: state.phase,
+		yourTurn: yourTurn(state, session.yourSeat),
+		lastRoll: state.lastRoll,
+		events: (state.log ?? []).slice(-20).map((line) => ({
+			id: line.id,
+			text: line.text
+		}))
+	};
+}
+function normalizeAction(input) {
+	if (!input || typeof input !== "object") return null;
+	const raw = input;
+	const action = raw.action && typeof raw.action === "object" ? raw.action : raw;
+	const type = action.type;
+	if (typeof type !== "string" || !type) return null;
+	return action;
+}
+/** WebMCP / ChatGPT site tools bound to the live Havn session in this tab. */
+var EMPTY = {
+	type: "object",
+	properties: {},
+	additionalProperties: false
+};
+var ACTION = {
+	type: "object",
+	properties: { action: {
+		type: "object",
+		description: "One action from get_legal_actions. Larger offerTrade and discard piles are also accepted when the rules allow them.",
+		properties: { type: { type: "string" } },
+		required: ["type"],
+		additionalProperties: true
+	} },
+	required: ["action"],
+	additionalProperties: false
+};
+function modelContext() {
+	if (typeof document === "undefined") return null;
+	const mc = document.modelContext;
+	if (!mc || typeof mc.registerTool !== "function") return null;
+	return mc;
+}
+function session() {
+	const store = useGame.getState();
+	return {
+		role: store.matchRole,
+		status: store.matchStatus,
+		room: store.matchRoom,
+		yourSeat: store.viewerId
+	};
+}
+function noGame(sessionInfo) {
+	return {
+		ok: false,
+		error: "No game is running in this tab.",
+		session: {
+			...sessionInfo,
+			yourName: null,
+			yourTurn: false
+		}
+	};
+}
+function readState() {
+	return {
+		info: session(),
+		live: asLive(useGame.getState().state)
+	};
+}
+var tools = [
+	{
+		name: "get_game_state",
+		description: "Read the live Havn board in this browser tab. Returns players, phase, hexes, buildings, roads, ports, your private cards, public information about everyone else, and the legal actions for your seat. Never includes another player's resource cards, development cards, or hidden victory points, and never includes the dice seed.",
+		inputSchema: EMPTY,
+		annotations: { readOnlyHint: true },
+		execute: () => {
+			const { info, live } = readState();
+			if (!live) return noGame(info);
+			return projectState(live, info);
+		}
+	},
+	{
+		name: "get_legal_actions",
+		description: "List the actions your seat can take right now. Pass any returned object as play_action's action field. You may also offer a larger trade with {type:'offerTrade', to, give:{wood,brick,wool,grain,ore}, want:{...}} or discard an exact half with {type:'discard', resources:{...}} when it is your decision.",
+		inputSchema: EMPTY,
+		annotations: { readOnlyHint: true },
+		execute: () => {
+			const { info, live } = readState();
+			if (!live) return {
+				...noGame(info),
+				actions: []
+			};
+			return {
+				ok: true,
+				yourSeat: info.yourSeat,
+				yourTurn: projectState(live, info).session.yourTurn,
+				actions: legalActions(live, info.yourSeat)
+			};
+		}
+	},
+	{
+		name: "play_action",
+		description: "Play one legal action for your own seat in the live game. Refuses another player's turn, a missing seat, and any move the game rules reject. On a joined table the action is sent to the host; call get_game_state again until revision changes.",
+		inputSchema: ACTION,
+		execute: (input) => {
+			const action = normalizeAction(input);
+			if (!action) return {
+				ok: false,
+				error: "Missing action. Pass { action: { type } } from get_legal_actions."
+			};
+			const store = useGame.getState();
+			const info = session();
+			const live = asLive(store.state);
+			if (!live) return noGame(info);
+			if (info.yourSeat < 0) return {
+				ok: false,
+				error: "You do not have a seat in this game yet."
+			};
+			if (info.role === "guest" && info.status !== "live") return {
+				ok: false,
+				error: "Not connected to the host yet."
+			};
+			const preview = tryAction(live, action);
+			if (!preview.ok) return {
+				ok: false,
+				error: preview.error
+			};
+			const before = live.revision;
+			store.dispatch(action);
+			if (store.matchRole === "guest") return {
+				ok: true,
+				sent: true,
+				revision: before,
+				note: "Action sent to the host. Call get_game_state until revision increases."
+			};
+			const next = asLive(useGame.getState().state);
+			const failure = useGame.getState().error;
+			if (!next || next.revision === before) return {
+				ok: false,
+				error: failure || "The action was not applied."
+			};
+			const last = next.log?.[next.log.length - 1];
+			return {
+				ok: true,
+				revision: next.revision,
+				phase: next.phase,
+				event: last?.text ?? null
+			};
+		}
+	},
+	{
+		name: "get_game_events",
+		description: "Recent public events from the live game, including the last dice roll, so you can explain what just happened. Does not reveal hidden cards.",
+		inputSchema: EMPTY,
+		annotations: { readOnlyHint: true },
+		execute: () => {
+			const { info, live } = readState();
+			if (!live) return noGame(info);
+			return recentEvents(live, info);
+		}
+	}
+];
+var mounted = null;
+async function registerOnce() {
+	const mc = modelContext();
+	if (!mc) return "unavailable";
+	for (const tool of tools) try {
+		await mc.registerTool(tool);
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		if (!/duplicate/i.test(message)) throw err;
+	}
+	return "ready";
+}
+/** Feature-detects document.modelContext and registers the four Havn tools. */
+function mountHavnSiteTools() {
+	if (!mounted) mounted = registerOnce();
+	return mounted;
+}
+function GameApp({ join, match, name }) {
 	const navigate = useNavigate({ from: "/" });
 	const matchRoom = useGame((s) => s.matchRoom);
 	const matchRole = useGame((s) => s.matchRole);
@@ -5869,6 +6471,16 @@ function GameApp({ join, match }) {
 	const continueSave = useGame((s) => s.continueSave);
 	const state = useGame((s) => s.state);
 	const toMenu = useGame((s) => s.toMenu);
+	const [webmcp, setWebmcp] = (0, import_react.useState)("unknown");
+	(0, import_react.useEffect)(() => {
+		let alive = true;
+		mountHavnSiteTools().then((status) => {
+			if (alive) setWebmcp(status);
+		});
+		return () => {
+			alive = false;
+		};
+	}, []);
 	(0, import_react.useLayoutEffect)(() => {
 		const cur = useGame.getState();
 		if (isRoomCode(join)) {
@@ -5908,13 +6520,17 @@ function GameApp({ join, match }) {
 		navigate({ search: {} });
 	};
 	const hostName = (state?.players)?.[0]?.name || t("start.you");
-	const guestName = t("mp.friend");
+	const guestName = name || t("mp.friend");
 	if (isRoomCode(join) && matchRole !== "guest") return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 		className: "relative min-h-dvh bg-bg",
-		children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+		children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 			"data-testid": "havn-joining",
 			className: "absolute inset-0 z-20 flex items-end justify-center bg-bg/70 p-4 md:items-center",
-			children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+				"data-testid": "havn-webmcp",
+				"data-status": webmcp,
+				hidden: true
+			}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 				className: "w-full max-w-md rounded-[24px] border border-border bg-surface p-6 shadow-panel",
 				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
 					className: "font-display text-2xl",
@@ -5923,22 +6539,31 @@ function GameApp({ join, match }) {
 					className: "mt-2 text-sm text-muted",
 					children: t("mp.waitingHost")
 				})]
-			})
+			})]
 		})
 	});
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 		className: "relative min-h-dvh bg-bg",
-		children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(HavnTable, { onLeaveMatch: leaveToTitle }), matchRoom && matchRole !== "solo" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MatchBridge, {
-			room: matchRoom,
-			name: matchRole === "host" ? hostName : guestName
-		}) : null]
+		children: [
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+				"data-testid": "havn-webmcp",
+				"data-status": webmcp,
+				hidden: true
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(HavnTable, { onLeaveMatch: leaveToTitle }),
+			matchRoom && matchRole !== "solo" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MatchBridge, {
+				room: matchRoom,
+				name: matchRole === "host" ? hostName : guestName
+			}) : null
+		]
 	});
 }
 function Home() {
-	const { join, match } = Route$2.useSearch();
+	const { join, match, name } = Route$2.useSearch();
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GameApp, {
 		join,
-		match
+		match,
+		name
 	});
 }
 //#endregion

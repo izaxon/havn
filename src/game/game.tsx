@@ -1044,6 +1044,10 @@ function nr(e, t) {
     throw e;
   }
 }
+export function tryAction(state, action) {
+  if (!state) return { ok: !1, error: `No game is running.` };
+  return nr(state, action);
+}
 function rr(e, t) {
   return K(e, t);
 }

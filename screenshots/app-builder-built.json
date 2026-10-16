@@ -7,9 +7,9 @@
       "status": 200,
       "title": "Havn",
       "hasCanvas": false,
-      "bodyTextLen": 315,
-      "bodyTextHash": "b0c261f4d610c3b69959dc289e75dcae097d24a7e13c0dd3d2406f06ee231d8c",
-      "bodyTextPrefix": "THE ISLAND WAITS SV EN DE ES FR Havn Settle the island, gather r",
+      "bodyTextLen": 304,
+      "bodyTextHash": "fc2654291c2ec1530e5e225f49ee6f1583baf124d419d214f018859308819412",
+      "bodyTextPrefix": "ÖN VÄNTAR SV EN DE ES FR Havn Kolonisera ön, samla råvaror och b",
       "horizontalOverflow": false,
       "consoleErrors": [],
       "pageErrors": [],
@@ -35,6 +35,7 @@
   "verdictFile": "/workspace/screenshots/app-builder-built.json",
   "divergesFromBaseline": true,
   "baselineReasons": [
+    "desktop: body text replaced (similar length, page start changed)",
     "mobile: body text replaced (similar length, page start changed)"
   ]
 }

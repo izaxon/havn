@@ -1,11 +1,20 @@
-import { useLayoutEffect } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { MatchBridge } from "@/components/game/MatchBridge";
 import { HavnTable, useGame } from "@/game/store-api";
 import { t } from "@/game/i18n";
 import { HOST_SEAT, isRoomCode } from "@/game/match";
+import { mountHavnSiteTools } from "@/game/webmcp";
 
-export function GameApp({ join, match }: { join?: string; match?: string }) {
+export function GameApp({
+  join,
+  match,
+  name,
+}: {
+  join?: string;
+  match?: string;
+  name?: string;
+}) {
   const navigate = useNavigate({ from: "/" });
   const matchRoom = useGame((s) => s.matchRoom);
   const matchRole = useGame((s) => s.matchRole);
@@ -13,6 +22,17 @@ export function GameApp({ join, match }: { join?: string; match?: string }) {
   const continueSave = useGame((s) => s.continueSave);
   const state = useGame((s) => s.state);
   const toMenu = useGame((s) => s.toMenu);
+  const [webmcp, setWebmcp] = useState<"unknown" | "ready" | "unavailable">("unknown");
+
+  useEffect(() => {
+    let alive = true;
+    void mountHavnSiteTools().then((status) => {
+      if (alive) setWebmcp(status);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useLayoutEffect(() => {
     const cur = useGame.getState();
@@ -51,7 +71,7 @@ export function GameApp({ join, match }: { join?: string; match?: string }) {
 
   const players = (state as { players?: { name?: string }[] } | null)?.players;
   const hostName = players?.[0]?.name || t("start.you");
-  const guestName = t("mp.friend");
+  const guestName = name || t("mp.friend");
 
   if (isRoomCode(join) && matchRole !== "guest") {
     return (
@@ -60,6 +80,7 @@ export function GameApp({ join, match }: { join?: string; match?: string }) {
           data-testid="havn-joining"
           className="absolute inset-0 z-20 flex items-end justify-center bg-bg/70 p-4 md:items-center"
         >
+          <div data-testid="havn-webmcp" data-status={webmcp} hidden />
           <div className="w-full max-w-md rounded-[24px] border border-border bg-surface p-6 shadow-panel">
             <h2 className="font-display text-2xl">{t("mp.joining")}</h2>
             <p className="mt-2 text-sm text-muted">{t("mp.waitingHost")}</p>
@@ -71,6 +92,7 @@ export function GameApp({ join, match }: { join?: string; match?: string }) {
 
   return (
     <div className="relative min-h-dvh bg-bg">
+      <div data-testid="havn-webmcp" data-status={webmcp} hidden />
       <HavnTable onLeaveMatch={leaveToTitle} />
       {matchRoom && matchRole !== "solo" ? (
         <MatchBridge room={matchRoom} name={matchRole === "host" ? hostName : guestName} />

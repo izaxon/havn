@@ -8,6 +8,7 @@ import {
   friendSeatIds,
   inviteUrl,
   isNetMsg,
+  seatMayPlay,
   type GameAction,
   type NetMsg,
 } from "@/game/match";
@@ -102,7 +103,17 @@ function MatchBridgeInner({ room, name }: { room: string; name: string }) {
         return;
       }
       if (msg.t === "action") {
-        if (role === "host") dispatch(msg.action);
+        if (role !== "host") return;
+        const seat = seatMap.current.get(from);
+        const liveBoard = asBoard(useGame.getState().state);
+        if (seat == null || !liveBoard || !seatMayPlay(liveBoard, seat, msg.action)) {
+          p2p.send(
+            { t: "error", message: "Only the player whose turn it is can play from that seat." },
+            from,
+          );
+          return;
+        }
+        dispatch(msg.action);
         return;
       }
       if (msg.t === "error") {
