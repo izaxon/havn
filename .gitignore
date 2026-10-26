@@ -3,3 +3,7 @@ node_modules/
 .github_repo
 .env
 .env.*
+
+# Build output and QA screenshots are regenerated; Vercel builds from source on deploy.
+.vercel/
+screenshots/

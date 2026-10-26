@@ -1,0 +1,2 @@
+# The router plugin regenerates this with LF; keep it LF on Windows checkouts so builds leave no diff.
+src/routeTree.gen.ts text eol=lf
