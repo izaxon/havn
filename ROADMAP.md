@@ -57,6 +57,26 @@ gamble.
 - End-of-game screen: final points breakdown, longest road and army history,
   resources collected per player, play again with the same island.
 - Undo before confirm for setup placements and road building.
+- **Make the robber and the card hand legible** (reported by players as the
+  main point of confusion):
+  - Robber: today it is a small dark silhouette (`ri` in `game.tsx`) with no
+    label, no highlight and no mention in the side panel. Give it a halo and a
+    contrasting outline, dim the hex it blocks and strike through that hex's
+    number, animate its move, and add a side-panel line such as "Rövaren står
+    på 6 (Berg): ger inga råvaror". Pulse it when the player must move it.
+  - Development cards: today they are text-only buttons in a wrapping row,
+    new cards are dashed outlines with no explanation, a disabled card gives no
+    reason, and the section disappears entirely when the hand is empty, so
+    players never learn that cards exist. Replace with a titled "Dina kort"
+    section that is always present (empty state: "Köp kort: ull + säd +
+    malm"), card tiles with icon, name and the one-line effect that already
+    exists in the `devHint` catalog, a "ny, spelbar nästa tur" badge for cards
+    bought this turn, the disabled reason on hover and tap ("ett kort per
+    tur", "spela efter tärningen"), the owner's hidden victory-point cards
+    counted, and knights played toward largest army (for example "2 av 3").
+  - Tie the two together: hovering or tapping the knight card highlights the
+    robber and explains that playing it moves the robber and steals a card,
+    which also separates "Riddare" (the card) from "Rövaren" (the piece).
 - First-game guidance: highlight legal spots and explain the first three
   decisions in place, instead of the rules dialog only.
 
