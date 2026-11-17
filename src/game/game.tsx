@@ -29,14 +29,43 @@ import {
   User,
   Volume2,
   VolumeX,
+  Music,
   X as XIcon,
   Link2,
+  Sailboat,
+  MoveRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
-import { t as i, useT, useLocaleStore, aiNames, youNames, allAiNames, LocaleSwitch } from "@/game/i18n";
+import { t as i, useT, useLocaleStore, aiNames, youNames, friendNames, allAiNames, LocaleSwitch } from "@/game/i18n";
 import { makeRoomCode } from "@/game/match";
+import {
+  SEA_MODE,
+  SEA_WIN_TARGET,
+  SHIPS_PER_PLAYER,
+  SHIP_COST,
+  HOME_ISLAND,
+  isSea,
+  isWaterTerrain,
+  hexIsWater,
+  edgeIsLand,
+  vertexIsLand,
+  makeSeaBoard,
+  canPlaceShip,
+  shipSpots,
+  movableShips,
+  shipTargets,
+  pirateVictims,
+  islandBonusAt,
+  islandPoints,
+  routeLength,
+  goldDebts,
+  goldNeed,
+  chooseGold,
+  planShip,
+} from "@/game/archipelago";
+import { SeaPatterns, ShipPiece, PiratePiece } from "@/game/sea-ui";
 
 
 const p = BookOpen;
@@ -76,6 +105,7 @@ var V = [`wood`, `brick`, `wool`, `grain`, `ore`],
     settlement: { wood: 1, brick: 1, wool: 1, grain: 1 },
     city: { grain: 2, ore: 3 },
     dev: { wool: 1, grain: 1, ore: 1 },
+    ship: SHIP_COST,
   },
   Yt = { 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 8: 5, 9: 4, 10: 3, 11: 2, 12: 1 },
   Xt = Math.sqrt(3),
@@ -296,11 +326,14 @@ function vn(e) {
   return [...t, ...t.slice().reverse()];
 }
 function yn(e) {
-  return e.phase === `discard`
-    ? (e.discardQueue[0] ?? e.currentPlayer)
-    : e.tradeOffer
-      ? e.tradeOffer.to
-      : e.currentPlayer;
+  if (e.phase === `discard`) return e.discardQueue[0] ?? e.currentPlayer;
+  if (e.phase === `gold`) return e.goldQueue?.[0]?.player ?? e.currentPlayer;
+  if (e.tradeOffer) {
+    let t = offerPending(e),
+      n = t.find((t) => e.players[t]?.isAi);
+    return n ?? t[0] ?? e.currentPlayer;
+  }
+  return e.currentPlayer;
 }
 function q(e, t) {
   return e.board.vertices.find((e) => e.id === t);
@@ -321,14 +354,14 @@ function Cn(e, t) {
 }
 function wn(e, t) {
   let n = q(e, t);
-  return !n || n.building ? !1 : Sn(e, t).every((t) => !q(e, t)?.building);
+  return !n || n.building || !vertexIsLand(n) ? !1 : Sn(e, t).every((t) => !q(e, t)?.building);
 }
 function Tn(e, t, n) {
-  return Cn(e, n).some((e) => e.road?.player === t);
+  return Cn(e, n).some((e) => e.road?.player === t || e.ship?.player === t);
 }
 function En(e, t, n) {
   let r = bn(e, n);
-  if (!r) return !1;
+  if (!r || !edgeIsLand(r)) return !1;
   for (let n of [r.a, r.b]) {
     let i = q(e, n);
     if (
@@ -343,7 +376,15 @@ function En(e, t, n) {
 function Dn(e, t) {
   let n = e.phase === `setup`;
   return e.board.vertices
-    .filter((r) => !(r.building || !wn(e, r.id) || (!n && !Tn(e, t, r.id))))
+    .filter(
+      (r) =>
+        !(
+          r.building ||
+          !wn(e, r.id) ||
+          (!n && !Tn(e, t, r.id)) ||
+          (n && isSea(e) && r.island !== HOME_ISLAND)
+        ),
+    )
     .map((e) => e.id);
 }
 function On(e, t) {
@@ -353,11 +394,11 @@ function On(e, t) {
     let t = e.lastSettlementId;
     return t
       ? Cn(e, t)
-          .filter((e) => !e.road)
+          .filter((e) => !e.road && !e.ship && edgeIsLand(e))
           .map((e) => e.id)
       : [];
   }
-  return e.board.edges.filter((n) => !n.road && En(e, t, n.id)).map((e) => e.id);
+  return e.board.edges.filter((n) => !n.road && !n.ship && En(e, t, n.id)).map((e) => e.id);
 }
 function kn(e, t) {
   return e.board.vertices
@@ -379,33 +420,13 @@ function jn(e, t) {
   let r = 0;
   for (let n of e.board.vertices)
     n.building?.player === t && (r += n.building.type === `city` ? 2 : 1);
-  return (n.hasLongestRoad && (r += 2), n.hasLargestArmy && (r += 2), r);
+  return (n.hasLongestRoad && (r += 2), n.hasLargestArmy && (r += 2), r + islandPoints(n));
 }
 function Mn(e, t) {
   return jn(e, t) + (e.players[t]?.vpCards ?? 0);
 }
 function Nn(e, t) {
-  let n = e.board.edges.filter((e) => e.road?.player === t);
-  if (n.length === 0) return 0;
-  let r = new Set(
-      e.board.vertices.filter((e) => e.building && e.building.player !== t).map((e) => e.id),
-    ),
-    i = {};
-  for (let e of n) i[e.id] = [];
-  for (let e = 0; e < n.length; e++)
-    for (let t = e + 1; t < n.length; t++) {
-      let a = n[e],
-        o = n[t],
-        s = a.a === o.a || a.a === o.b ? a.a : a.b === o.a || a.b === o.b ? a.b : null;
-      s && !r.has(s) && (i[a.id].push(o.id), i[o.id].push(a.id));
-    }
-  let a = 1,
-    o = (e, t, n) => {
-      n > a && (a = n);
-      for (let r of i[e]) t.has(r) || (t.add(r), o(r, t, n + 1), t.delete(r));
-    };
-  for (let e of n) o(e.id, new Set([e.id]), 1);
-  return a;
+  return routeLength(e, t);
 }
 function Pn(e) {
   return e == null ? 0 : (Yt[e] ?? 0);
@@ -424,7 +445,61 @@ function Fn(e, t, n) {
   }
   return ((i += a.size * 1.8), r.port && (r.port.kind === `generic` ? (i += 1.2) : (i += 1.6)), i);
 }
+function ownedNumbers(e, t) {
+  let n = new Set();
+  for (let r of e.board.vertices) {
+    if (r.building?.player !== t) continue;
+    for (let i of r.hexIds) {
+      let r = xn(e, i);
+      r?.number != null && n.add(r.number);
+    }
+  }
+  return n;
+}
+function proSpot(e, t, n) {
+  let r = Fn(e, t, or(e, n)),
+    i = q(e, t);
+  if (!i) return r;
+  let a = new Set(or(e, n)),
+    o = ownedNumbers(e, n);
+  for (let t of i.hexIds) {
+    let n = xn(e, t);
+    !n ||
+      n.id === e.robberHexId ||
+      !hn(n.terrain) ||
+      ((n.terrain === `ore` || n.terrain === `grain`) && !a.has(n.terrain) && (r += 2.4),
+      n.number != null && o.has(n.number) && (r -= Pn(n.number) * 0.85),
+      (n.number === 6 || n.number === 8) && !o.has(n.number) && (r += 1.2));
+  }
+  return (i.port && (r += i.port.kind === `generic` ? 0.8 : 1.6), r);
+}
+function spotScore(e, t, n) {
+  return e.pro ? proSpot(e, t, n) : Fn(e, t, or(e, n));
+}
+function knightTakesArmy(e, t) {
+  let n = (e.players[t]?.knightsPlayed ?? 0) + 1;
+  if (n < 3) return !1;
+  let r = 0;
+  for (let i of e.players) i.id !== t && (r = Math.max(r, i.knightsPlayed));
+  return n > r;
+}
+function missingCards(e, t) {
+  let n = 0;
+  for (let r of V) n += Math.max(0, (t[r] ?? 0) - (e[r] ?? 0));
+  return n;
+}
+function oneCardFrom(e, t) {
+  return !K(e, t) && missingCards(e, t) === 1;
+}
+function handsCity(e, t, n, r) {
+  let i = e.players[t];
+  if (!i || i.citiesLeft <= 0) return !1;
+  let a = W();
+  for (let e of V) a[e] = (i.resources[e] ?? 0) - (n[e] ?? 0) + (r[e] ?? 0);
+  return !K(i.resources, U.city) && K(a, U.city);
+}
 function In(e, t, n) {
+  if (hexIsWater(e, t)) return pirateVictims(e, t, n);
   let r = new Set();
   for (let i of e.board.vertices)
     !i.hexIds.includes(t) ||
@@ -477,6 +552,15 @@ var Y = {
     get desert() {
       return i(`terrain.desert`);
     },
+    get sea() {
+      return i(`terrain.sea`);
+    },
+    get lake() {
+      return i(`terrain.lake`);
+    },
+    get gold() {
+      return i(`terrain.gold`);
+    },
   },
   zn = {
     get knight() {
@@ -498,21 +582,18 @@ var Y = {
 function Bn(e, t, viewerId) {
   let n = e.players[yn(e)],
     isViewer = viewerId == null || n?.id === viewerId,
-    r = n && (n.isAi || !isViewer) ? n.name : i(`ui.youPronoun`);
+    r = n?.name ?? ``;
   if (e.tradeOffer) {
     let offer = e.tradeOffer,
       from = e.players[offer.from],
-      to = e.players[offer.to];
-    if (viewerId != null) {
-      if (to?.id === viewerId)
-        return i(`hint.wantsTrade`, {
-          name: from?.id === viewerId ? i(`ui.youPronoun`) : (from?.name ?? ``),
-        });
-      return i(`hint.waitFor`, { name: to?.name ?? `` });
-    }
-    return to?.isAi
-      ? i(`hint.waitFor`, { name: to.name })
-      : i(`hint.wantsTrade`, { name: from?.isAi ? from.name : i(`ui.youPronoun`) });
+      pending = offerPending(e);
+    if (pending.includes(viewerId)) return i(`hint.wantsTrade`, { name: from?.name ?? `` });
+    return i(`hint.waitFor`, {
+      name: pending
+        .map((t) => e.players[t]?.name)
+        .filter(Boolean)
+        .join(`, `),
+    });
   }
   if (!isViewer && n && !n.isAi) return i(`hint.waitFor`, { name: n.name });
   switch (e.phase) {
@@ -525,10 +606,15 @@ function Bn(e, t, viewerId) {
     case `discard`:
       return i(`hint.discard`, { you: r, n: Math.floor(G(n?.resources ?? W()) / 2) });
     case `robber`:
-      return i(`hint.robber`, { you: r });
+      return i(isSea(e) ? `hint.robberSea` : `hint.robber`, { you: r });
+    case `gold`:
+      return i(`hint.gold`, { you: r, n: goldNeed(e) });
     case `roadBuilding`: {
       let t = e.pendingFreeRoads;
-      return i(t === 1 ? `hint.freeRoad` : `hint.freeRoads`, { you: r, n: t });
+      return i(
+        isSea(e) ? (t === 1 ? `hint.freeRoute` : `hint.freeRoutes`) : t === 1 ? `hint.freeRoad` : `hint.freeRoads`,
+        { you: r, n: t },
+      );
     }
     case `main`:
       return t === `settlement`
@@ -537,7 +623,13 @@ function Bn(e, t, viewerId) {
           ? i(`hint.pickCity`)
           : t === `road`
             ? i(`hint.pickRoad`)
-            : i(`hint.main`, { you: r });
+            : t === `ship`
+              ? i(`hint.pickShip`)
+              : t === `moveShip`
+                ? i(`hint.pickMoveShip`)
+                : typeof t === `string` && t.startsWith(`moveShip:`)
+                  ? i(`hint.pickShipTarget`)
+                  : i(`hint.main`, { you: r });
     case `gameOver`: {
       let t = e.players[e.winnerId ?? 0];
       return i(`hint.win`, { name: t?.name ?? `—`, n: Mn(e, t?.id ?? 0) });
@@ -552,6 +644,9 @@ function Vn(e) {
     .join(`, `);
 }
 var Hn = 10;
+function winTarget(e) {
+  return isSea(e) ? SEA_WIN_TARGET : Hn;
+}
 function pushLog(e, t) {
   ((e.logSeq += 1),
     e.log.push({ id: e.logSeq, text: t }),
@@ -563,6 +658,12 @@ function Z(e, t) {
 function Q(e, t) {
   let n = e.players[t];
   return (Z(n, i(`engine.badPlayer`)), n);
+}
+function offerPending(e) {
+  let t = e.tradeOffer;
+  if (!t) return [];
+  if (Array.isArray(t.pending) && t.pending.length) return t.pending.filter((n) => e.players[n]);
+  return typeof t.to === `number` && t.to >= 0 && e.players[t.to] ? [t.to] : [];
 }
 function Un(e, t, n) {
   let r = e.hand.indexOf(t);
@@ -606,7 +707,7 @@ function Gn(e) {
   }
 }
 function Kn(e, t) {
-  Mn(e, t) >= Hn &&
+  Mn(e, t) >= winTarget(e) &&
     ((e.phase = `gameOver`),
     (e.winnerId = t),
     (e.tradeOffer = null),
@@ -637,6 +738,7 @@ function qn(e, t) {
     let r = n[t.id];
     G(r) > 0 && pushLog(e, i(`engine.gains`, { name: t.name, list: Vn(r) }));
   }
+  isSea(e) && (e.goldQueue = goldDebts(e, t));
 }
 function Jn(e, t, n) {
   let r = q(e, t);
@@ -662,7 +764,10 @@ function Xn(e, t) {
     (e.pendingFreeRoads = 0),
     (e.tradeOffer = null),
     (e.offeredTradeThisTurn = !1),
-    (e.lastSettlementId = null));
+    (e.lastSettlementId = null),
+    (e.movedShipThisTurn = !1),
+    (e.shipsBuiltThisTurn = []),
+    (e.goldQueue = []));
 }
 function Zn(e) {
   let t = vn(e.players.length);
@@ -705,7 +810,8 @@ function $n(e) {
 function er(e) {
   let t = e.seed ?? Math.floor(Math.random() * 1e9),
     n = sn(t),
-    { board: r, robberHexId: a } = mn(n),
+    sea = e.mode === SEA_MODE,
+    { board: r, robberHexId: a, pirateHexId: pirate = null } = sea ? makeSeaBoard(n) : mn(n),
     o = e.seats.slice(0, 4);
   Z(o.length >= 2 && o.length <= 4, i(`engine.pickSeats`));
   let s = {
@@ -727,9 +833,13 @@ function er(e) {
       knightsPlayed: 0,
       hasLongestRoad: !1,
       hasLargestArmy: !1,
+      ...(sea ? { shipsLeft: SHIPS_PER_PLAYER, islands: [] } : {}),
     })),
     currentPlayer: 0,
     robberHexId: a,
+    ...(sea
+      ? { mode: SEA_MODE, pirateHexId: pirate, movedShipThisTurn: !1, shipsBuiltThisTurn: [], goldQueue: [] }
+      : {}),
     bank: gn(),
     deck: $n(n),
     discardQueue: [],
@@ -747,6 +857,7 @@ function er(e) {
     log: [],
     logSeq: 0,
     seed: t,
+    pro: !!e.pro,
   };
   return (pushLog(s, i(`engine.setupLog`)), s);
 }
@@ -754,6 +865,7 @@ function tr(e, t) {
   if (e.phase === `gameOver` || e.phase === `menu`) throw new Jt(i(`engine.notRunning`));
   if (e.tradeOffer && t.type !== `respondTrade` && t.type !== `cancelTrade`)
     throw new Jt(i(`engine.waitTrade`));
+  if (t.type !== `undoBank`) e.undoBank = null;
   let n = yn(e);
   switch (t.type) {
     case `placeSettlement`: {
@@ -775,7 +887,7 @@ function tr(e, t) {
             (e.setupNeed = `road`),
             e.setupIndex >= e.players.length && Jn(e, a.id, r.id),
             pushLog(e, i(`engine.foundsSettle`, { name: r.name })))
-          : (pushLog(e, i(`engine.buildsSettle`, { name: r.name })), Wn(e), Kn(e, r.id)));
+          : (pushLog(e, i(`engine.buildsSettle`, { name: r.name })), awardIsland(e, r, a.id), Wn(e), Kn(e, r.id)));
       return;
     }
     case `placeRoad`: {
@@ -801,7 +913,7 @@ function tr(e, t) {
               pushLog(e, i(`engine.freeRoad`, { name: a.name })),
               Wn(e),
               Kn(e, a.id),
-              (e.pendingFreeRoads <= 0 || On(e, a.id).length === 0) &&
+              (e.pendingFreeRoads <= 0 || (On(e, a.id).length === 0 && shipSpots(e, a.id).length === 0)) &&
                 ((e.pendingFreeRoads = 0), (e.phase = `main`)))
             : (pushLog(e, i(`engine.buildsRoad`, { name: a.name })), Wn(e), Kn(e, a.id)));
       return;
@@ -833,7 +945,7 @@ function tr(e, t) {
       ((e.lastRoll = { d1: a, d2: o, total: s, revision: e.revision }),
         (e.rolledThisTurn = !0),
         pushLog(e, i(`engine.rolled`, { name: t.name, d1: a, d2: o, total: s })),
-        s === 7 ? Qn(e) : (qn(e, s), (e.phase = `main`)));
+        s === 7 ? Qn(e) : (qn(e, s), (e.phase = e.goldQueue?.length ? `gold` : `main`)));
       return;
     }
     case `discard`: {
@@ -863,13 +975,17 @@ function tr(e, t) {
       let r = Q(e, e.currentPlayer);
       Z(n === r.id, i(`engine.notYourTurn`));
       let a = xn(e, t.hexId);
-      (Z(a, i(`engine.badHex`)), Z(a.id !== e.robberHexId, i(`engine.moveRobberElse`)));
+      Z(a, i(`engine.badHex`));
+      let water = isWaterTerrain(a.terrain);
+      water
+        ? (Z(isSea(e), i(`engine.badHex`)), Z(a.id !== e.pirateHexId, i(`engine.movePirateElse`)))
+        : Z(a.id !== e.robberHexId, i(`engine.moveRobberElse`));
       let o = In(e, a.id, r.id);
       if (
         (t.stealFrom == null
           ? Z(o.length === 0, i(`engine.pickVictim`))
           : Z(o.includes(t.stealFrom), i(`engine.cantSteal`)),
-        (e.robberHexId = a.id),
+        water ? (e.pirateHexId = a.id) : (e.robberHexId = a.id),
         t.stealFrom != null)
       ) {
         let n = Q(e, t.stealFrom),
@@ -879,7 +995,7 @@ function tr(e, t) {
           (--n.resources[o],
           (r.resources[o] += 1),
           pushLog(e, i(`engine.stole`, { name: r.name, resource: Y[o].toLowerCase(), other: n.name })));
-      } else pushLog(e, i(`engine.movedRobber`, { name: r.name }));
+      } else pushLog(e, i(water ? `engine.movedPirate` : `engine.movedRobber`, { name: r.name }));
       e.phase = e.rolledThisTurn ? `main` : `roll`;
       return;
     }
@@ -918,13 +1034,13 @@ function tr(e, t) {
         Z(!e.playedDevThisTurn, i(`engine.oneDev`)),
         Un(t, `roads`, !1),
         (e.playedDevThisTurn = !0),
-        On(e, t.id).length === 0 || t.roadsLeft <= 0)
+        (On(e, t.id).length === 0 || t.roadsLeft <= 0) && shipSpots(e, t.id).length === 0)
       ) {
         pushLog(e, i(`engine.roadsNoBuild`, { name: t.name }));
         return;
       }
       ((e.phase = `roadBuilding`),
-        (e.pendingFreeRoads = Math.min(2, t.roadsLeft)),
+        (e.pendingFreeRoads = Math.min(2, t.roadsLeft + (t.shipsLeft ?? 0))),
         pushLog(e, i(`engine.playsRoads`, { name: t.name })));
       return;
     }
@@ -972,6 +1088,7 @@ function tr(e, t) {
         (e.bank[t.give] += a),
         --e.bank[t.get],
         (r.resources[t.get] += 1),
+        (e.undoBank = { player: r.id, give: t.give, get: t.get, rate: a }),
         pushLog(
           e,
           i(`engine.bankSwap`, {
@@ -983,35 +1100,78 @@ function tr(e, t) {
         ));
       return;
     }
+    case `undoBank`: {
+      Z(e.phase === `main`, i(`engine.notNow`));
+      let u = e.undoBank;
+      Z(u, i(`engine.notNow`));
+      let r = Q(e, e.currentPlayer);
+      (Z(n === r.id && r.id === u.player, i(`engine.notYourTurn`)),
+        Z(r.resources[u.get] >= 1, i(`engine.noThoseCards`)),
+        Z(e.bank[u.give] >= u.rate, i(`engine.bankEmpty`)),
+        (r.resources[u.get] -= 1),
+        (e.bank[u.get] += 1),
+        (e.bank[u.give] -= u.rate),
+        (r.resources[u.give] += u.rate),
+        (e.undoBank = null),
+        pushLog(e, i(`engine.undoBank`, { name: r.name })));
+      return;
+    }
     case `offerTrade`: {
       Z(e.phase === `main`, i(`engine.notNow`));
       let r = Q(e, e.currentPlayer);
       Z(n === r.id, i(`engine.notYourTurn`));
-      let a = Q(e, t.to);
-      Z(a.id !== r.id, i(`engine.selfTrade`));
+      let targets =
+        t.to === -1
+          ? e.players.filter((e) => e.id !== r.id).map((e) => e.id)
+          : [Q(e, t.to).id];
+      Z(targets.length > 0 && targets.every((e) => e !== r.id), i(`engine.selfTrade`));
       let o = G(t.give),
         s = G(t.want);
       Z(o > 0 && s > 0, i(`engine.bothWays`));
       for (let e of V) Z(r.resources[e] >= t.give[e], i(`engine.noThoseCards`));
-      ((e.tradeOffer = { from: r.id, to: a.id, give: { ...t.give }, want: { ...t.want } }),
+      let other = targets.map((t) => e.players[t]?.name).filter(Boolean).join(`, `);
+      ((e.tradeOffer = {
+        from: r.id,
+        to: targets.length === 1 ? targets[0] : -1,
+        pending: targets,
+        give: { ...t.give },
+        want: { ...t.want },
+      }),
         (e.offeredTradeThisTurn = !0),
-        pushLog(e, i(`engine.offers`, { name: r.name, other: a.name })));
+        pushLog(e, i(`engine.offers`, { name: r.name, other })));
       return;
     }
     case `respondTrade`: {
-      let n = e.tradeOffer;
-      Z(n, i(`engine.noOffer`));
-      let r = Q(e, n.from),
-        a = Q(e, n.to);
-      if (!(t.accept && K(r.resources, n.give) && K(a.resources, n.want))) {
-        (pushLog(e, i(`engine.declines`, { name: a.name })), (e.tradeOffer = null));
+      let offer = e.tradeOffer;
+      Z(offer, i(`engine.noOffer`));
+      let pending = offerPending(e),
+        who =
+          typeof t.playerId === `number` && pending.includes(t.playerId)
+            ? t.playerId
+            : pending.length === 1
+              ? pending[0]
+              : null;
+      Z(who != null, i(`engine.noOffer`));
+      let r = Q(e, offer.from),
+        a = Q(e, who);
+      if (!(t.accept && K(r.resources, offer.give) && K(a.resources, offer.want))) {
+        let rest = pending.filter((e) => e !== who);
+        pushLog(e, i(`engine.declines`, { name: a.name }));
+        e.tradeOffer =
+          rest.length === 0
+            ? null
+            : {
+                ...offer,
+                pending: rest,
+                to: rest.length === 1 ? rest[0] : -1,
+              };
         return;
       }
       for (let e of V)
-        ((r.resources[e] -= n.give[e]),
-          (a.resources[e] += n.give[e]),
-          (a.resources[e] -= n.want[e]),
-          (r.resources[e] += n.want[e]));
+        ((r.resources[e] -= offer.give[e]),
+          (a.resources[e] += offer.give[e]),
+          (a.resources[e] -= offer.want[e]),
+          (r.resources[e] += offer.want[e]));
       (pushLog(e, i(`engine.accepts`, { name: a.name, other: r.name })), (e.tradeOffer = null));
       return;
     }
@@ -1021,6 +1181,73 @@ function tr(e, t) {
         Z(t.from === e.currentPlayer, i(`engine.onlyOfferer`)),
         (e.tradeOffer = null),
         pushLog(e, i(`engine.retracts`, { name: Q(e, t.from).name })));
+      return;
+    }
+    case `placeShip`: {
+      Z(isSea(e), i(`engine.noShipNow`));
+      let free = e.phase === `roadBuilding`;
+      Z(
+        (e.phase === `setup` && e.setupNeed === `road`) || e.phase === `main` || free,
+        i(`engine.noShipNow`),
+      );
+      let a = Q(e, e.currentPlayer);
+      (Z(n === a.id, i(`engine.notYourTurn`)),
+        Z((a.shipsLeft ?? 0) > 0, i(`engine.noShips`)),
+        Z(canPlaceShip(e, a.id, t.edgeId), i(`engine.badShip`)));
+      e.phase === `main` &&
+        (Z(K(a.resources, J(`ship`)), i(`engine.cantAffordShip`)), _n(a.resources, e.bank, J(`ship`)));
+      let o = bn(e, t.edgeId);
+      ((o.ship = { player: a.id }), --a.shipsLeft, (e.shipsBuiltThisTurn ??= []).push(o.id));
+      if (e.phase === `setup`) {
+        (pushLog(e, i(`engine.launchesShip`, { name: a.name })), Zn(e));
+        return;
+      }
+      if (free) {
+        (--e.pendingFreeRoads,
+          pushLog(e, i(`engine.freeShip`, { name: a.name })),
+          Wn(e),
+          Kn(e, a.id),
+          (e.pendingFreeRoads <= 0 || (On(e, a.id).length === 0 && shipSpots(e, a.id).length === 0)) &&
+            ((e.pendingFreeRoads = 0), e.phase === `roadBuilding` && (e.phase = `main`)));
+        return;
+      }
+      (pushLog(e, i(`engine.buildsShip`, { name: a.name })), Wn(e), Kn(e, a.id));
+      return;
+    }
+    case `moveShip`: {
+      Z(isSea(e) && e.phase === `main`, i(`engine.notNow`));
+      let a = Q(e, e.currentPlayer);
+      (Z(n === a.id, i(`engine.notYourTurn`)),
+        Z(!e.movedShipThisTurn, i(`engine.shipMoved`)),
+        Z(movableShips(e, a.id).includes(t.from), i(`engine.badMove`)),
+        Z(shipTargets(e, a.id, t.from).includes(t.to), i(`engine.badMove`)));
+      ((bn(e, t.from).ship = null),
+        (bn(e, t.to).ship = { player: a.id }),
+        (e.movedShipThisTurn = !0),
+        pushLog(e, i(`engine.movesShip`, { name: a.name })),
+        Wn(e),
+        Kn(e, a.id));
+      return;
+    }
+    case `pickGold`: {
+      Z(e.phase === `gold`, i(`engine.noGold`));
+      let head = e.goldQueue?.[0];
+      Z(head, i(`engine.noGold`));
+      let a = Q(e, head.player),
+        need = goldNeed(e),
+        got = 0;
+      for (let r of V) {
+        let k = t.resources?.[r] ?? 0;
+        (Z(Number.isInteger(k) && k >= 0 && k <= e.bank[r], i(`engine.badGold`, { n: need })), (got += k));
+      }
+      Z(got === need, i(`engine.badGold`, { n: need }));
+      for (let r of V) {
+        let k = t.resources?.[r] ?? 0;
+        ((e.bank[r] -= k), (a.resources[r] += k));
+      }
+      (need > 0 && pushLog(e, i(`engine.goldPick`, { name: a.name, list: Vn(t.resources) })),
+        e.goldQueue.shift(),
+        e.goldQueue.length === 0 && (e.phase = `main`));
       return;
     }
     case `endTurn`: {
@@ -1035,6 +1262,11 @@ function tr(e, t) {
       throw new Jt(i(`engine.unknown`));
   }
 }
+function awardIsland(e, player, vertexId) {
+  let island = islandBonusAt(e, player.id, vertexId);
+  island != null &&
+    ((player.islands ??= []).push(island), pushLog(e, i(`engine.islandBonus`, { name: player.name })));
+}
 function nr(e, t) {
   try {
     let n = structuredClone(e);
@@ -1043,6 +1275,13 @@ function nr(e, t) {
     if (e instanceof Jt) return { ok: !1, error: e.message };
     throw e;
   }
+}
+/** Engine entry points for headless simulation (scripts/sim-archipelago.mjs). */
+export function newGame(opts) {
+  return er(opts);
+}
+export function computerAction(state) {
+  return yr(state);
 }
 export function tryAction(state, action) {
   if (!state) return { ok: !1, error: `No game is running.` };
@@ -1076,12 +1315,11 @@ function or(e, t) {
 }
 function sr(e, t, n) {
   if (t.length === 0) return null;
-  let r = or(e, n),
-    i = t[0],
+  let i = t[0],
     a = -1 / 0;
-  for (let n of t) {
-    let t = Fn(e, n, r);
-    t > a && ((a = t), (i = n));
+  for (let r of t) {
+    let t = spotScore(e, r, n);
+    t > a && ((a = t), (i = r));
   }
   return i;
 }
@@ -1102,12 +1340,22 @@ function cr(e, t) {
   return r;
 }
 function lr(e, t) {
-  let n = [];
+  let n = [],
+    leader = -1,
+    lead = -1;
+  if (e.pro)
+    for (let r of e.players)
+      if (r.id !== t) {
+        let n = Mn(e, r.id);
+        n > lead && ((lead = n), (leader = r.id));
+      }
   for (let r of e.board.hexes) {
     if (r.id === e.robberHexId) continue;
+    let water = isWaterTerrain(r.terrain);
+    if (water && (!isSea(e) || r.id === e.pirateHexId)) continue;
     let i = In(e, r.id, t),
-      a = 0;
-    hn(r.terrain) && (a += Pn(r.number) * 2);
+      a = water ? -2 : 0;
+    (hn(r.terrain) || r.terrain === `gold`) && (a += Pn(r.number) * 2);
     let o = null,
       s = -1;
     for (let t of i) {
@@ -1116,11 +1364,21 @@ function lr(e, t) {
         i = n * 3 + r;
       (i > s && ((s = i), (o = t)), (a += i));
     }
-    (e.board.vertices.some((e) => e.hexIds.includes(r.id) && e.building?.player === t) && (a -= 8),
+    !water &&
+      e.pro &&
+      leader >= 0 &&
+      e.board.vertices.some(
+        (n) => n.hexIds.includes(r.id) && n.building?.player === leader,
+      ) &&
+      (a += Pn(r.number) * 3 + 4);
+    (!water && e.board.vertices.some((e) => e.hexIds.includes(r.id) && e.building?.player === t) && (a -= 8),
       n.push({ hexId: r.id, score: a, stealFrom: o }));
   }
   n.sort((e, t) => t.score - e.score);
-  let r = n[0] ?? { hexId: e.board.hexes.find((t) => t.id !== e.robberHexId).id, stealFrom: null };
+  let r = n[0] ?? {
+    hexId: e.board.hexes.find((t) => t.id !== e.robberHexId && !isWaterTerrain(t.terrain)).id,
+    stealFrom: null,
+  };
   return { type: `moveRobber`, hexId: r.hexId, stealFrom: r.stealFrom };
 }
 function ur(e, t, n) {
@@ -1151,8 +1409,9 @@ function dr(e, t, n) {
     )[0];
   if (!a) return null;
   let o = W(),
-    s = W();
-  return ((o[i] = 1), (s[n] = 1), { type: `offerTrade`, to: a.id, give: o, want: s });
+    s = W(),
+    qty = e.pro && r.resources[i] >= 4 ? 2 : 1;
+  return ((o[i] = qty), (s[n] = 1), { type: `offerTrade`, to: a.id, give: o, want: s });
 }
 function fr(e, t, n) {
   let r = e.players[t],
@@ -1184,7 +1443,7 @@ function mr(e, t) {
 function hr(e, t) {
   let n = e.players[t];
   if (e.playedDevThisTurn) return null;
-  if (n.hand.includes(`knight`) && (mr(e, t) || n.knightsPlayed === 2))
+  if (n.hand.includes(`knight`) && (mr(e, t) || n.knightsPlayed === 2 || (e.pro && knightTakesArmy(e, t))))
     return { type: `playKnight` };
   if (e.phase !== `main`) return null;
   if (n.hand.includes(`monopoly`)) {
@@ -1219,7 +1478,7 @@ function gr(e, t) {
   if (n.length === 0) return null;
   let r = e.board.vertices
       .filter((t) => !t.building && _r(e, t.id))
-      .sort((t, n) => Fn(e, n.id) - Fn(e, t.id))
+      .sort((a, b) => spotScore(e, b.id, t) - spotScore(e, a.id, t))
       .slice(0, 4),
     i = n[0],
     a = -1;
@@ -1233,27 +1492,66 @@ function gr(e, t) {
 }
 function _r(e, t) {
   let n = q(e, t);
-  return !n || n.building
+  return !n || n.building || !vertexIsLand(n)
     ? !1
     : e.board.edges
         .filter((e) => e.a === t || e.b === t)
         .every((n) => !q(e, n.a === t ? n.b : n.a)?.building);
 }
+function roadLengthIf(e, edgeId, playerId) {
+  let edge = e.board.edges.find((n) => n.id === edgeId);
+  if (!edge || edge.road) return Nn(e, playerId);
+  let prev = edge.road;
+  edge.road = { player: playerId };
+  try {
+    return Nn(e, playerId);
+  } finally {
+    edge.road = prev;
+  }
+}
+function proRoadAction(e, t) {
+  if (!e.pro) return null;
+  let n = e.players[t];
+  if (!n || n.roadsLeft <= 0 || !K(n.resources, U.road)) return null;
+  if (Dn(e, t).length && n.settlementsLeft > 0 && K(n.resources, U.settlement)) return null;
+  let edges = On(e, t);
+  if (!edges.length) return null;
+  let mine = Nn(e, t),
+    bestOther = 0;
+  for (let r of e.players) r.id !== t && (bestOther = Math.max(bestOther, Nn(e, r.id)));
+  let best = null,
+    score = -1;
+  for (let id of edges) {
+    let edge = e.board.edges.find((n) => n.id === id);
+    if (!edge) continue;
+    let len = roadLengthIf(e, id, t),
+      dest = 0;
+    for (let vid of [edge.a, edge.b]) {
+      let v = q(e, vid);
+      v && !v.building && (dest = Math.max(dest, proSpot(e, vid, t)));
+    }
+    let s = (len - mine) * 8 + dest * 0.5;
+    len >= 5 && len > bestOther && (s += 24);
+    s > score && ((score = s), (best = id));
+  }
+  return best != null && score >= 8 ? { type: `placeRoad`, edgeId: best } : null;
+}
 function vr(e, t) {
   let n = e.players[t],
-    r = Mn(e, t);
-  if (r >= 10) return { type: `endTurn` };
+    r = Mn(e, t),
+    goal = winTarget(e);
+  if (r >= goal) return { type: `endTurn` };
   let i = kn(e, t),
     a = Dn(e, t),
     o = On(e, t);
-  if (r >= 8 && i.length && rr(n.resources, U.city) && n.citiesLeft > 0)
-    return { type: `placeCity`, vertexId: i[0] };
-  if (r >= 9 && a.length && rr(n.resources, U.settlement) && n.settlementsLeft > 0)
+  if (r >= goal - 2 && i.length && rr(n.resources, U.city) && n.citiesLeft > 0)
+    return { type: `placeCity`, vertexId: e.pro ? sr(e, i, t) : i[0] };
+  if (r >= goal - 1 && a.length && rr(n.resources, U.settlement) && n.settlementsLeft > 0)
     return { type: `placeSettlement`, vertexId: sr(e, a, t) };
   let s = hr(e, t);
   if (s) return s;
   if (i.length && n.citiesLeft > 0) {
-    if (rr(n.resources, U.city)) return { type: `placeCity`, vertexId: i[0] };
+    if (rr(n.resources, U.city)) return { type: `placeCity`, vertexId: e.pro ? sr(e, i, t) : i[0] };
     let r = fr(e, t, U.city);
     if (r) return r;
     let a = ur(e, t, U.city);
@@ -1266,8 +1564,21 @@ function vr(e, t) {
     let i = ur(e, t, U.settlement);
     if (i) return i;
   }
+  if (isSea(e) && n.settlementsLeft > 0) {
+    let plan = planShip(e, t, (v) => spotScore(e, v, t));
+    if (plan && (a.length === 0 || plan.value > 8)) {
+      if (rr(n.resources, U.ship)) return { type: `placeShip`, edgeId: plan.edgeId };
+      let r = fr(e, t, U.ship);
+      if (r) return r;
+      let i = ur(e, t, U.ship);
+      if (i) return i;
+    }
+  }
   if (a.length === 0 && o.length && n.roadsLeft > 0) {
-    if (rr(n.resources, U.road)) {
+    if (e.pro) {
+      let road = proRoadAction(e, t);
+      if (road) return road;
+    } else if (rr(n.resources, U.road)) {
       let n = gr(e, t);
       if (n) return { type: `placeRoad`, edgeId: n };
     } else {
@@ -1277,11 +1588,17 @@ function vr(e, t) {
       if (r) return r;
     }
   }
-  if (e.deck.length > 0 && rr(n.resources, U.dev)) return { type: `buyDev` };
-  if (e.deck.length > 0) {
+  if (e.pro) {
+    let road = proRoadAction(e, t);
+    if (road) return road;
+  }
+  let saveForCity = e.pro && n.citiesLeft > 0 && i.length > 0 && oneCardFrom(n.resources, U.city);
+  if (!saveForCity && e.deck.length > 0 && rr(n.resources, U.dev)) return { type: `buyDev` };
+  if (!saveForCity && e.deck.length > 0) {
     let n = fr(e, t, U.dev);
     if (n) return n;
   }
+  if (saveForCity) return { type: `endTurn` };
   let c = ur(e, t, U.dev);
   return c && e.deck.length > 0 ? c : pr(e, t) || { type: `endTurn` };
 }
@@ -1289,14 +1606,22 @@ function yr(e) {
   if (e.phase === `gameOver` || e.phase === `menu`) return null;
   if (e.tradeOffer) {
     let t = e.tradeOffer,
-      n = e.players[t.to];
-    if (!n?.isAi) return null;
-    if (!K(n.resources, t.want)) return { type: `respondTrade`, accept: !1 };
+      pending = offerPending(e),
+      ai = pending.find((t) => e.players[t]?.isAi);
+    if (ai == null) return null;
+    let n = e.players[ai];
+    if (!K(n.resources, t.want)) return { type: `respondTrade`, accept: !1, playerId: ai };
+    if (e.pro && handsCity(e, t.from, t.give, t.want))
+      return { type: `respondTrade`, accept: !1, playerId: ai };
     let r = G(t.give),
       i = G(t.want),
       a = V.some((e) => t.give[e] > 0 && n.resources[e] <= 1),
       o = V.some((e) => t.want[e] > 0 && n.resources[e] - t.want[e] <= 0);
-    return { type: `respondTrade`, accept: (r >= i && !o) || (a && r + 1 >= i) };
+    return {
+      type: `respondTrade`,
+      accept: (r >= i && !o) || (a && r + 1 >= i),
+      playerId: ai,
+    };
   }
   let t = yn(e),
     n = e.players[t];
@@ -1304,6 +1629,11 @@ function yr(e) {
   switch (e.phase) {
     case `discard`:
       return { type: `discard`, resources: cr(e, t) };
+    case `gold`:
+      return {
+        type: `pickGold`,
+        resources: chooseGold(n.resources, e.bank, goldNeed(e), [U.city, U.settlement, U.ship, U.dev]),
+      };
     case `setup`:
       if (e.setupNeed === `settlement`) {
         let n = sr(e, Dn(e, t), t);
@@ -1315,21 +1645,26 @@ function yr(e) {
         let r = e.lastSettlementId,
           i = n[0],
           a = -1 / 0;
-        for (let t of n) {
-          let n = e.board.edges.find((e) => e.id === t);
-          if (!n) continue;
-          let o = Fn(e, n.a === r ? n.b : n.a);
-          o > a && ((a = o), (i = t));
+        for (let edgeId of n) {
+          let edge = e.board.edges.find((e) => e.id === edgeId);
+          if (!edge) continue;
+          let far = edge.a === r ? edge.b : edge.a,
+            o = spotScore(e, far, t);
+          o > a && ((a = o), (i = edgeId));
         }
         return { type: `placeRoad`, edgeId: i };
       }
     case `roll`:
-      return !e.playedDevThisTurn && n.hand.includes(`knight`) && mr(e, t)
+      return !e.playedDevThisTurn &&
+        n.hand.includes(`knight`) &&
+        (mr(e, t) || (e.pro && knightTakesArmy(e, t)))
         ? { type: `playKnight` }
         : { type: `roll` };
     case `robber`:
       return lr(e, t);
     case `roadBuilding`: {
+      let plan = isSea(e) ? planShip(e, t, (v) => spotScore(e, v, t)) : null;
+      if (plan && canPlaceShip(e, t, plan.edgeId)) return { type: `placeShip`, edgeId: plan.edgeId };
       let n = gr(e, t);
       return n ? { type: `placeRoad`, edgeId: n } : { type: `skipFreeRoad` };
     }
@@ -1499,11 +1834,11 @@ export const useGame = create((e, t) => ({
     let n = er(opts);
     (Sr(n), e({ state: n, buildMode: null, error: null, ...matchDefaults }));
   },
-  startInvite: (seats) => {
+  startInvite: (seats, pro, sea) => {
     try {
       Or();
       let room = t().matchRoom || makeRoomCode();
-      let n = er({ seats: forceFriendSeats(seats) });
+      let n = er({ seats: forceFriendSeats(seats), pro: !!pro, mode: sea ? SEA_MODE : void 0 });
       (Sr(n),
         e({
           state: n,
@@ -1547,10 +1882,7 @@ export const useGame = create((e, t) => ({
       e({
         state: a.state,
         error: null,
-        buildMode:
-          n.type === `placeRoad` || n.type === `placeSettlement` || n.type === `placeCity`
-            ? null
-            : t().buildMode,
+        buildMode: null,
       }));
     if (g.matchRole === `host`) publishState(a.state);
   },
@@ -1558,7 +1890,7 @@ export const useGame = create((e, t) => ({
     if (!remote) return !1;
     let cur = t().state;
     if (cur && (remote.revision ?? 0) < (cur.revision ?? 0)) return !1;
-    e({ state: remote, error: null });
+    e({ state: remote, error: null, buildMode: null });
     return !0;
   },
   setMatch: (patch) => e(patch),
@@ -1655,8 +1987,12 @@ function Fr(e) {
     r({ type: `discard`, resources: t });
     return;
   }
+  if (e.phase === `gold`) {
+    r({ type: `pickGold`, resources: chooseGold(n.resources, e.bank, goldNeed(e), []) });
+    return;
+  }
   if (e.phase === `robber`) {
-    let t = e.board.hexes.find((t) => t.id !== e.robberHexId);
+    let t = e.board.hexes.find((t) => t.id !== e.robberHexId && !isWaterTerrain(t.terrain));
     if (!t) return;
     let n = In(e, t.id, e.currentPlayer);
     r({ type: `moveRobber`, hexId: t.id, stealFrom: n[0] ?? null });
@@ -2074,7 +2410,19 @@ function Qr({
               type: `button`,
               className: `col-span-3 lg:col-span-2`,
               onClick: a,
-              children: [jsx(g, { className: `size-4` }), f(`ui.roll`)],
+              children: [jsx(g, { className: `size-4` }), f(`ui.rollHint`)],
+            }),
+          e.phase === `roadBuilding` &&
+            n &&
+            isSea(e) &&
+            jsxs(B, {
+              type: `button`,
+              variant: r === `ship` ? `default` : `secondary`,
+              className: `col-span-3 lg:col-span-2`,
+              "aria-pressed": r === `ship`,
+              disabled: shipSpots(e, t.id).length === 0,
+              onClick: () => i(r === `ship` ? null : `ship`),
+              children: [jsx(Sailboat, { className: `size-4` }), f(`ui.preferShip`)],
             }),
           e.phase === `roadBuilding` &&
             n &&
@@ -2115,6 +2463,26 @@ function Qr({
                   onClick: () => i(r === `city` ? null : `city`),
                   children: [jsx(h, { className: `size-4` }), f(`ui.city`)],
                 }),
+                isSea(e) &&
+                  jsxs(B, {
+                    type: `button`,
+                    size: `sm`,
+                    className: `lg:h-11 lg:px-4 lg:text-sm`,
+                    variant: r === `ship` ? `default` : `secondary`,
+                    disabled: shipSpots(e, t.id).length === 0 || !K(t.resources, J(`ship`)),
+                    onClick: () => i(r === `ship` ? null : `ship`),
+                    children: [jsx(Sailboat, { className: `size-4` }), f(`ui.ship`)],
+                  }),
+                isSea(e) &&
+                  jsxs(B, {
+                    type: `button`,
+                    size: `sm`,
+                    className: `lg:h-11 lg:px-4 lg:text-sm`,
+                    variant: typeof r === `string` && r.startsWith(`moveShip`) ? `default` : `secondary`,
+                    disabled: movableShips(e, t.id).length === 0,
+                    onClick: () => i(typeof r === `string` && r.startsWith(`moveShip`) ? null : `moveShip`),
+                    children: [jsx(MoveRight, { className: `size-4` }), f(`ui.moveShip`)],
+                  }),
                 jsxs(B, {
                   type: `button`,
                   size: `sm`,
@@ -2144,9 +2512,9 @@ function Qr({
         ],
       }),
       jsx(`div`, {
-        className: `hidden max-h-32 space-y-1 overflow-auto text-xs text-muted lg:block`,
+        className: `hidden max-h-32 flex-col-reverse gap-0.5 overflow-auto text-xs text-muted lg:flex`,
         children: e.log
-          .slice(-8)
+          .slice(-12)
           .reverse()
           .map((e) => jsx(`p`, { children: e.text }, e.id)),
       }),
@@ -2318,6 +2686,7 @@ function ri({ x: e, y: t }) {
   });
 }
 function ii({ state: e, buildMode: t, disabled: n, onVertex: r, onEdge: i, onHex: a }) {
+  let buildMode = t;
   let o = (0, useMemo)(() => {
       let n = e.currentPlayer;
       return (e.phase === `setup` && e.setupNeed === `settlement`) ||
@@ -2335,13 +2704,42 @@ function ii({ state: e, buildMode: t, disabled: n, onVertex: r, onEdge: i, onHex
         ? new Set(On(e, n))
         : new Set();
     }, [e, t]),
+    shipLegal = (0, useMemo)(() => {
+      if (!isSea(e)) return new Set();
+      let n = e.currentPlayer;
+      if (typeof t === `string` && t.startsWith(`moveShip:`)) return new Set(shipTargets(e, n, t.slice(9)));
+      if (t === `moveShip`) return e.phase === `main` ? new Set(movableShips(e, n)) : new Set();
+      return (e.phase === `setup` && e.setupNeed === `road`) ||
+        e.phase === `roadBuilding` ||
+        (e.phase === `main` && t === `ship`)
+        ? new Set(shipSpots(e, n))
+        : new Set();
+    }, [e, t]),
+    sea = isSea(e),
     c = e.phase === `robber` && !n,
     l = e.lastRoll && e.lastRoll.total !== 7 ? e.lastRoll.total : null,
-    u = (0, useMemo)(() => new Map(e.board.vertices.map((e) => [e.id, e])), [e.board.vertices]);
+    u = (0, useMemo)(() => new Map(e.board.vertices.map((e) => [e.id, e])), [e.board.vertices]),
+    hexOrder = (0, useMemo)(
+      () =>
+        sea
+          ? [...e.board.hexes].sort(
+              (a, b) => Number(!isWaterTerrain(a.terrain)) - Number(!isWaterTerrain(b.terrain)),
+            )
+          : e.board.hexes,
+      [e.board.hexes, sea],
+    ),
+    viewBox = (0, useMemo)(() => {
+      if (!sea) return `-500 -460 1000 930`;
+      let xs = e.board.vertices.map((v) => v.x),
+        ys = e.board.vertices.map((v) => v.y),
+        x0 = Math.min(...xs) - 40,
+        y0 = Math.min(...ys) - 40;
+      return `${x0} ${y0} ${Math.max(...xs) + 40 - x0} ${Math.max(...ys) + 40 - y0}`;
+    }, [e.board.vertices, sea]);
   return jsx(`div`, {
     className: `h-full w-full p-1`,
     children: jsxs(`svg`, {
-      viewBox: `-500 -460 1000 930`,
+      viewBox,
       preserveAspectRatio: `xMidYMid meet`,
       width: `100%`,
       height: `100%`,
@@ -2366,20 +2764,23 @@ function ii({ state: e, buildMode: t, disabled: n, onVertex: r, onEdge: i, onHex
               }),
             }),
             jsx(Xr, {}),
+            sea && jsx(SeaPatterns, {}),
           ],
         }),
-        jsx(`polygon`, { points: ei(440), fill: `url(#terrain-water)` }),
-        jsx(`polygon`, {
-          points: ei(440),
-          fill: `none`,
-          stroke: `#0c1c24`,
-          strokeWidth: `18`,
-          opacity: 0.35,
-        }),
-        e.board.hexes.map((t) => {
+        !sea && jsx(`polygon`, { points: ei(440), fill: `url(#terrain-water)` }),
+        !sea &&
+          jsx(`polygon`, {
+            points: ei(440),
+            fill: `none`,
+            stroke: `#0c1c24`,
+            strokeWidth: `18`,
+            opacity: 0.35,
+          }),
+        hexOrder.map((t) => {
           let n = en(t.q, t.r),
+            water = isWaterTerrain(t.terrain),
             r = l != null && t.number === l && t.id !== e.robberHexId,
-            i = c && t.id !== e.robberHexId;
+            i = c && (water ? sea && t.id !== e.pirateHexId : t.id !== e.robberHexId);
           return jsxs(
             `g`,
             {
@@ -2387,9 +2788,9 @@ function ii({ state: e, buildMode: t, disabled: n, onVertex: r, onEdge: i, onHex
                 jsx(`polygon`, {
                   points: an(t.q, t.r),
                   fill: `url(#terrain-${t.terrain})`,
-                  stroke: r ? `#f3efe6` : `#1a1510`,
-                  strokeWidth: r ? 5 : 3,
-                  filter: `url(#hex-shadow)`,
+                  stroke: water ? `#1d4554` : r ? `#f3efe6` : `#1a1510`,
+                  strokeWidth: water ? 1.5 : r ? 5 : 3,
+                  filter: water ? void 0 : `url(#hex-shadow)`,
                   className: i ? `cursor-pointer` : void 0,
                   onClick: i ? () => a(t.id) : void 0,
                 }),
@@ -2449,8 +2850,8 @@ function ii({ state: e, buildMode: t, disabled: n, onVertex: r, onEdge: i, onHex
         e.board.edges
           .filter((e) => e.port)
           .map((e) => {
-            let t = e.midX + e.ox * 50,
-              n = e.midY + e.oy * 50,
+            let t = e.midX + e.ox * 36,
+              n = e.midY + e.oy * 36,
               r = e.port;
             return jsxs(
               `g`,
@@ -2525,6 +2926,28 @@ function ii({ state: e, buildMode: t, disabled: n, onVertex: r, onEdge: i, onHex
               `road-${t.id}`,
             );
           }),
+        sea &&
+          e.board.edges
+            .filter((t) => t.ship)
+            .map((t) => {
+              let n = u.get(t.a),
+                r = u.get(t.b);
+              if (!n || !r) return null;
+              let c = H[e.players[t.ship.player]?.colorIndex ?? 0] ?? H[0];
+              return jsx(
+                ShipPiece,
+                {
+                  x1: n.x,
+                  y1: n.y,
+                  x2: r.x,
+                  y2: r.y,
+                  fill: c.fill,
+                  stroke: c.stroke,
+                  selected: buildMode === `moveShip:${t.id}`,
+                },
+                `ship-${t.id}`,
+              );
+            }),
         !n &&
           [...s].map((t) => {
             let n = e.board.edges.find((e) => e.id === t);
@@ -2550,12 +2973,47 @@ function ii({ state: e, buildMode: t, disabled: n, onVertex: r, onEdge: i, onHex
                   `legal-${t}`,
                 );
           }),
+        !n &&
+          [...shipLegal]
+            .filter((t) => !s.has(t))
+            .map((t) => {
+              let n = e.board.edges.find((e) => e.id === t);
+              if (!n) return null;
+              let r = u.get(n.a),
+                a = u.get(n.b);
+              return !r || !a
+                ? null
+                : jsx(
+                    `line`,
+                    {
+                      x1: r.x,
+                      y1: r.y,
+                      x2: a.x,
+                      y2: a.y,
+                      stroke: `#9ed2dc`,
+                      strokeWidth: `14`,
+                      strokeLinecap: `round`,
+                      strokeDasharray: `10 9`,
+                      opacity: 0.8,
+                      className: `cursor-pointer`,
+                      onClick: () => i(t),
+                    },
+                    `legal-ship-${t}`,
+                  );
+            }),
         e.board.hexes
           .filter((t) => t.id === e.robberHexId)
           .map((e) => {
             let t = en(e.q, e.r);
             return jsx(ri, { x: t.x, y: t.y }, `robber`);
           }),
+        sea &&
+          e.board.hexes
+            .filter((t) => t.id === e.pirateHexId)
+            .map((t) => {
+              let n = en(t.q, t.r);
+              return jsx(PiratePiece, { x: n.x, y: n.y, pulse: c }, `pirate`);
+            }),
         e.board.vertices.map((t) => {
           let i = o.has(t.id);
           if (t.building) {
@@ -2611,6 +3069,26 @@ function ii({ state: e, buildMode: t, disabled: n, onVertex: r, onEdge: i, onHex
                 t.id,
               );
         }),
+        e.board.vertices
+          .filter((t) => t.port)
+          .map((t) =>
+            jsx(
+              `circle`,
+              {
+                cx: t.x,
+                cy: t.y,
+                r: `11`,
+                fill: `none`,
+                stroke: `#e6c27a`,
+                strokeWidth: `2`,
+                pointerEvents: `none`,
+                children: jsx(`title`, {
+                  children: `${i(`ui.portNote`)} ${t.port.kind === `generic` ? `3:1` : `2:1`}`,
+                }),
+              },
+              `port-node-${t.id}`,
+            ),
+          ),
       ],
     }),
   });
@@ -2618,8 +3096,38 @@ function ii({ state: e, buildMode: t, disabled: n, onVertex: r, onEdge: i, onHex
 function ai({ compact: e = !1 }) {
   return jsx(LocaleSwitch, { compact: e });
 }
-function oi({ title: e, children: t, onClose: n }) {
-  let r = useT();
+function oi({ title: e, children: t, onClose: n, dock: dock }) {
+  let r = useT(),
+    panel = jsxs(`div`, {
+      className: dock
+        ? `pointer-events-auto max-h-[48dvh] w-full overflow-y-auto rounded-[var(--radius-xl)] border border-border bg-surface/95 p-4 shadow-panel sm:max-h-[calc(100dvh-5rem)] sm:w-[22rem]`
+        : `relative max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-t-[var(--radius-xl)] border border-border bg-surface p-5 shadow-panel sm:rounded-[var(--radius-xl)]`,
+      children: [
+        jsxs(`div`, {
+          className: `mb-3 flex items-start justify-between gap-3`,
+          children: [
+            jsx(`h2`, {
+              className: `font-display text-xl font-semibold tracking-tight`,
+              children: e,
+            }),
+            n &&
+              jsx(`button`, {
+                type: `button`,
+                className: `grid size-10 place-items-center rounded-[var(--radius-sm)] text-muted hover:text-fg`,
+                onClick: n,
+                "aria-label": r(`ui.close`),
+                children: jsx(ae, { className: `size-5` }),
+              }),
+          ],
+        }),
+        t,
+      ],
+    });
+  if (dock)
+    return jsx(`div`, {
+      className: `pointer-events-none fixed inset-x-0 bottom-0 z-40 p-3 sm:inset-y-0 sm:left-auto sm:flex sm:items-start sm:p-4 sm:pt-16 lg:right-80`,
+      children: panel,
+    });
   return jsxs(`div`, {
     className: `fixed inset-0 z-50 flex items-end justify-center sm:items-center`,
     children: [
@@ -2629,33 +3137,11 @@ function oi({ title: e, children: t, onClose: n }) {
         "aria-label": r(`ui.close`),
         onClick: n,
       }),
-      jsxs(`div`, {
-        className: `relative max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-t-[var(--radius-xl)] border border-border bg-surface p-5 shadow-panel sm:rounded-[var(--radius-xl)]`,
-        children: [
-          jsxs(`div`, {
-            className: `mb-4 flex items-start justify-between gap-3`,
-            children: [
-              jsx(`h2`, {
-                className: `font-display text-xl font-semibold tracking-tight`,
-                children: e,
-              }),
-              n &&
-                jsx(`button`, {
-                  type: `button`,
-                  className: `grid size-10 place-items-center rounded-[var(--radius-sm)] text-muted hover:text-fg`,
-                  onClick: n,
-                  "aria-label": r(`ui.close`),
-                  children: jsx(ae, { className: `size-5` }),
-                }),
-            ],
-          }),
-          t,
-        ],
-      }),
+      panel,
     ],
   });
 }
-function si({ onClose: e }) {
+function si({ onClose: e, sea }) {
   let t = useT();
   return jsxs(oi, {
     title: t(`rules.title`),
@@ -2664,11 +3150,72 @@ function si({ onClose: e }) {
       jsxs(`div`, {
         className: `max-h-[60dvh] space-y-3 overflow-auto text-sm leading-relaxed text-muted`,
         children: [
+          jsxs(`div`, {
+            className: `rounded-[var(--radius-md)] bg-surface-2 px-3 py-2 text-sm`,
+            children: [
+              jsx(`p`, {
+                className: `text-xs font-medium tracking-[0.14em] text-fg uppercase`,
+                children: t(`ui.costs`),
+              }),
+              jsx(`ul`, {
+                className: `mt-2 space-y-1`,
+                children: [
+                  [`road`, `ui.road`],
+                  [`settlement`, `ui.settle`],
+                  [`city`, `ui.city`],
+                  [`dev`, `ui.card`],
+                  ...(sea ? [[`ship`, `ui.ship`]] : []),
+                ].map(([key, label]) =>
+                  jsxs(
+                    `li`,
+                    {
+                      className: `flex justify-between gap-3`,
+                      children: [
+                        jsx(`span`, { className: `text-fg`, children: t(label) }),
+                        jsx(`span`, {
+                          children: V.filter((r) => U[key]?.[r])
+                            .map((r) => `${U[key][r]} ${Y[r].toLowerCase()}`)
+                            .join(`, `),
+                        }),
+                      ],
+                    },
+                    key,
+                  ),
+                ),
+              }),
+              jsx(`p`, { className: `mt-2`, children: t(`ui.odds`) }),
+              jsx(`p`, { children: t(`ui.portNote`) }),
+            ],
+          }),
           jsx(`p`, { children: t(`rules.p1`) }),
           jsx(`p`, { children: t(`rules.p2`) }),
           jsx(`p`, { children: t(`rules.p3`) }),
           jsx(`p`, { children: t(`rules.p4`) }),
           jsx(`p`, { children: t(`rules.p5`) }),
+          jsxs(`div`, {
+            className: `space-y-2 rounded-[var(--radius-md)] border border-border px-3 py-2`,
+            children: [
+              jsx(`p`, {
+                className: `text-xs font-medium tracking-[0.14em] text-fg uppercase`,
+                children: t(`rules.seaTitle`),
+              }),
+              jsx(`p`, { children: t(`rules.sea1`) }),
+              jsx(`p`, { children: t(`rules.sea2`) }),
+              jsx(`p`, { children: t(`rules.sea3`) }),
+              jsx(`p`, { children: t(`rules.sea4`) }),
+            ],
+          }),
+          jsxs(`p`, {
+            children: [
+              t(`rules.api`),
+              " ",
+              jsx(`a`, {
+                href: `/api/docs`,
+                className: `underline`,
+                children: `/api/docs`,
+              }),
+            ],
+          }),
         ],
       }),
       jsxs(`div`, {
@@ -2751,6 +3298,70 @@ function ci({ state: e, playerId: t, onConfirm: n }) {
     ],
   });
 }
+function goldDialog({ state: e, playerId: t, onConfirm: n }) {
+  let r = useT(),
+    p = e.players[t],
+    need = goldNeed(e),
+    [o, s] = (0, useState)(W),
+    c = G(o);
+  return jsxs(oi, {
+    title: r(`ui.goldTitle`, { name: p.name, n: need }),
+    children: [
+      jsx(`p`, { className: `mb-4 text-sm text-muted`, children: r(`ui.goldHint`, { n: need }) }),
+      jsx(`div`, {
+        className: `space-y-2`,
+        children: V.map((k) =>
+          jsxs(
+            `div`,
+            {
+              className: `flex items-center gap-3`,
+              children: [
+                jsx(Zr, { resource: k }),
+                jsx(`span`, { className: `flex-1 text-sm`, children: Y[k] }),
+                jsx(`span`, {
+                  className: `w-8 text-right text-sm tabular-nums text-muted`,
+                  children: p.resources[k],
+                }),
+                jsxs(`div`, {
+                  className: `flex items-center gap-1`,
+                  children: [
+                    jsx(B, {
+                      type: `button`,
+                      size: `icon`,
+                      variant: `secondary`,
+                      className: `size-10`,
+                      disabled: o[k] <= 0,
+                      onClick: () => s((v) => ({ ...v, [k]: v[k] - 1 })),
+                      children: `−`,
+                    }),
+                    jsx(`span`, { className: `w-6 text-center text-sm tabular-nums`, children: o[k] }),
+                    jsx(B, {
+                      type: `button`,
+                      size: `icon`,
+                      variant: `secondary`,
+                      className: `size-10`,
+                      disabled: o[k] >= e.bank[k] || c >= need,
+                      onClick: () => s((v) => ({ ...v, [k]: v[k] + 1 })),
+                      children: `+`,
+                    }),
+                  ],
+                }),
+              ],
+            },
+            k,
+          ),
+        ),
+      }),
+      jsx(B, {
+        type: `button`,
+        className: `mt-5 w-full`,
+        disabled: c !== need,
+        onClick: () => n(o),
+        children: r(`ui.goldBtn`, { chosen: c, need }),
+      }),
+    ],
+  });
+}
 function wi({ label: e, resources: t, next: n, total: r }) {
   let a = useT();
   return jsxs(`div`, {
@@ -2814,13 +3425,18 @@ function li({ state: e, playerId: t, onBank: n, onOffer: r, onClose: i }) {
     [s, c] = (0, useState)(`bank`),
     [l, d] = (0, useState)(`wood`),
     [f, p] = (0, useState)(`brick`),
-    [m, h] = (0, useState)(e.players.find((e) => e.id !== t)?.id ?? 0),
+    [m, h] = (0, useState)(
+      e.players.filter((e) => e.id !== t).length > 1
+        ? -1
+        : (e.players.find((e) => e.id !== t)?.id ?? 0),
+    ),
     [g, _] = (0, useState)(W),
     [v, y] = (0, useState)(W),
     b = An(e, t, l);
   return jsxs(oi, {
     title: a(`ui.tradeTitle`),
     onClose: i,
+    dock: !0,
     children: [
       jsx(wi, {
         label: a(`ui.youHave`),
@@ -2877,11 +3493,15 @@ function li({ state: e, playerId: t, onBank: n, onOffer: r, onClose: i }) {
                   a(`ui.to`),
                   jsx(`select`, {
                     className: `mt-1 h-11 w-full rounded-[var(--radius-sm)] border border-border bg-surface-2 px-3 text-fg`,
-                    value: m,
+                    value: String(m),
                     onChange: (e) => h(Number(e.target.value)),
-                    children: e.players
-                      .filter((e) => e.id !== t)
-                      .map((e) => jsx(`option`, { value: e.id, children: e.name }, e.id)),
+                    children: [
+                      e.players.filter((e) => e.id !== t).length > 1 &&
+                        jsx(`option`, { value: `-1`, children: a(`ui.toAll`) }, `all`),
+                      ...e.players
+                        .filter((e) => e.id !== t)
+                        .map((e) => jsx(`option`, { value: String(e.id), children: e.name }, e.id)),
+                    ],
                   }),
                 ],
               }),
@@ -2970,11 +3590,79 @@ function di({ bank: e, max: t, onChange: n }) {
     ),
   });
 }
-function fi({ state: e, onRespond: t }) {
+function tradeBanner({ state: e, viewerId: viewer, onRespond: respond, onCancel: cancel }) {
+  let t = useT(),
+    offer = e.tradeOffer;
+  if (!offer) return null;
+  let pending = offerPending(e),
+    from = e.players[offer.from],
+    names = pending
+      .map((id) => e.players[id]?.name)
+      .filter(Boolean)
+      .join(`, `),
+    give = V.filter((r) => offer.give[r] > 0)
+      .map((r) => `${offer.give[r]} ${Y[r].toLowerCase()}`)
+      .join(`, `),
+    want = V.filter((r) => offer.want[r] > 0)
+      .map((r) => `${offer.want[r]} ${Y[r].toLowerCase()}`)
+      .join(`, `),
+    open = pending.length > 1;
+  return jsxs(`div`, {
+    className: `mx-3 mt-1 rounded-[var(--radius-md)] border border-accent/50 bg-surface px-3 py-2 text-sm shadow-panel`,
+    "data-testid": `trade-banner`,
+    children: [
+      jsx(`p`, {
+        children: t(
+          open ? `ui.tradeBannerAll` : `ui.tradeBanner`,
+          {
+            from: from?.name ?? ``,
+            to: names,
+            give: give || `—`,
+            want: want || `—`,
+          },
+        ),
+      }),
+      viewer === offer.from &&
+        jsx(`p`, {
+          className: `mt-1 text-xs text-muted`,
+          children: t(`ui.tradeWaiting`, { name: names }),
+        }),
+      pending.includes(viewer) &&
+        jsxs(`div`, {
+          className: `mt-2 flex gap-2`,
+          children: [
+            jsx(B, {
+              type: `button`,
+              size: `sm`,
+              variant: `secondary`,
+              onClick: () => respond(!1),
+              children: t(`ui.decline`),
+            }),
+            jsx(B, {
+              type: `button`,
+              size: `sm`,
+              onClick: () => respond(!0),
+              children: t(`ui.accept`),
+            }),
+          ],
+        }),
+      viewer === offer.from &&
+        jsx(B, {
+          type: `button`,
+          size: `sm`,
+          variant: `secondary`,
+          className: `mt-2`,
+          onClick: cancel,
+          children: t(`ui.retract`),
+        }),
+    ],
+  });
+}
+function fi({ state: e, viewerId: viewer, onRespond: t }) {
   let n = useT(),
     r = e.tradeOffer,
     i = e.players[r.from],
-    a = e.players[r.to],
+    a = e.players[viewer],
     have = a?.resources ?? W(),
     next = W();
   for (let res of V) next[res] = (have[res] ?? 0) - (r.want[res] ?? 0) + (r.give[res] ?? 0);
@@ -2983,7 +3671,18 @@ function fi({ state: e, onRespond: t }) {
     afterN = G(next);
   return jsxs(oi, {
     title: n(`ui.wantsTrade`, { name: i.name }),
+    dock: !0,
     children: [
+      jsxs(`p`, {
+        className: `mb-3 flex items-center gap-2 text-sm text-muted`,
+        children: [
+          jsx(`span`, {
+            className: `size-3 shrink-0 rounded-full`,
+            style: { background: (H[i.colorIndex] ?? H[0]).fill },
+          }),
+          n(`ui.theirCards`, { name: i.name, n: G(i.resources) }),
+        ],
+      }),
       jsx(wi, {
         label: n(`ui.youHave`),
         resources: have,
@@ -3230,7 +3929,7 @@ function vi({ onCancel: e, onConfirm: t }) {
     ],
   });
 }
-function yi({ onStart: t, onContinue: n, onRules: r, onInvite: onInvite }) {
+function yi({ onStart: t, onContinue: n, onRules: r, onInvite: onInvite, musicOff, onMusic }) {
   let i = useT(),
     a = useLocaleStore((e) => e.locale),
     [s, c] = (0, useState)(() => {
@@ -3241,24 +3940,27 @@ function yi({ onStart: t, onContinue: n, onRules: r, onInvite: onInvite }) {
         { name: e[1], isAi: !0, colorIndex: 2 },
       ];
     }),
-    [f, p] = (0, useState)(!1);
+    [f, p] = (0, useState)(!1),
+    [pro, setPro] = (0, useState)(!1),
+    [sea, setSea] = (0, useState)(!1);
   ((0, useEffect)(() => {
     p(Ir());
   }, []),
     (0, useEffect)(() => {
-      let e = i(`start.you`),
-        t = aiNames(a),
+      let t = aiNames(a),
         n = youNames(),
+        friends = friendNames(),
         r = allAiNames();
-      c((a) => {
+      c((list) => {
         let o = 0;
-        return a.map((a) => {
-          if (!a.isAi && (a.name === `` || n.has(a.name))) return { ...a, name: e };
-          if (a.isAi && (r.has(a.name) || a.name === ``)) {
+        return list.map((seat, index) => {
+          if (!seat.isAi && (seat.name === `` || n.has(seat.name) || friends.has(seat.name)))
+            return { ...seat, name: i(`start.playerN`, { n: index + 1 }) };
+          if (seat.isAi && (r.has(seat.name) || seat.name === ``)) {
             let e = t[o] ?? i(`start.computer`);
-            return ((o += 1), { ...a, name: e });
+            return ((o += 1), { ...seat, name: e });
           }
-          return (a.isAi && (o += 1), a);
+          return (seat.isAi && (o += 1), seat);
         });
       });
     }, [a, i]));
@@ -3290,7 +3992,17 @@ function yi({ onStart: t, onContinue: n, onRules: r, onInvite: onInvite }) {
                     className: `text-xs font-medium tracking-[0.22em] text-accent uppercase`,
                     children: i(`start.kicker`),
                   }),
-                  jsx(ai, { compact: !0 }),
+                  jsxs(`div`, {
+                    className: `flex items-center gap-1`,
+                    children: [
+                      jsx(MusicButton, {
+                        off: musicOff,
+                        onClick: onMusic,
+                        label: i(musicOff ? `ui.musicOn` : `ui.musicOff`),
+                      }),
+                      jsx(ai, { compact: !0 }),
+                    ],
+                  }),
                 ],
               }),
               jsx(`h1`, {
@@ -3374,9 +4086,7 @@ function yi({ onStart: t, onContinue: n, onRules: r, onInvite: onInvite }) {
                               isAi: n,
                               name: n
                                 ? (r[o] ?? i(`start.computer`))
-                                : t === 0
-                                  ? i(`start.you`)
-                                  : i(`mp.friend`),
+                                : i(`start.playerN`, { n: t + 1 }),
                             });
                           },
                           children: [
@@ -3409,12 +4119,67 @@ function yi({ onStart: t, onContinue: n, onRules: r, onInvite: onInvite }) {
           jsxs(`div`, {
             className: `flex flex-col gap-2`,
             children: [
+              jsxs(`button`, {
+                type: `button`,
+                onClick: () => setPro((v) => !v),
+                "aria-pressed": pro,
+                className: R(
+                  `flex w-full items-center justify-between gap-3 rounded-[var(--radius-md)] border px-3 py-2 text-left`,
+                  pro ? `border-accent bg-surface` : `border-border bg-surface/80`,
+                ),
+                children: [
+                  jsxs(`span`, {
+                    children: [
+                      jsx(`span`, {
+                        className: `block text-sm font-medium text-fg`,
+                        children: i(`start.pro`),
+                      }),
+                      jsx(`span`, {
+                        className: `block text-xs text-muted`,
+                        children: i(`start.proHint`),
+                      }),
+                    ],
+                  }),
+                  jsx(`span`, {
+                    className: `shrink-0 text-xs font-medium`,
+                    children: pro ? i(`start.proOn`) : i(`start.proOff`),
+                  }),
+                ],
+              }),
+              jsxs(`button`, {
+                type: `button`,
+                onClick: () => setSea((v) => !v),
+                "aria-pressed": sea,
+                "data-testid": `sea-mode`,
+                className: R(
+                  `flex w-full items-center justify-between gap-3 rounded-[var(--radius-md)] border px-3 py-2 text-left`,
+                  sea ? `border-accent bg-surface` : `border-border bg-surface/80`,
+                ),
+                children: [
+                  jsxs(`span`, {
+                    children: [
+                      jsx(`span`, {
+                        className: `block text-sm font-medium text-fg`,
+                        children: i(`start.sea`),
+                      }),
+                      jsx(`span`, {
+                        className: `block text-xs text-muted`,
+                        children: i(`start.seaHint`),
+                      }),
+                    ],
+                  }),
+                  jsx(`span`, {
+                    className: `shrink-0 text-xs font-medium`,
+                    children: sea ? i(`start.proOn`) : i(`start.proOff`),
+                  }),
+                ],
+              }),
               jsx(B, {
                 type: `button`,
                 size: `lg`,
                 className: `w-full`,
                 "data-testid": `start-game`,
-                onClick: () => t(s),
+                onClick: () => t(s, pro, sea),
                 children: i(`start.startGame`),
               }),
               onInvite &&
@@ -3426,7 +4191,7 @@ function yi({ onStart: t, onContinue: n, onRules: r, onInvite: onInvite }) {
                       variant: `secondary`,
                       className: `w-full`,
                       "data-testid": `invite-friend`,
-                      onClick: () => onInvite(s),
+                      onClick: () => onInvite(s, pro, sea),
                       children: i(`mp.invite`),
                     }),
                     jsx(`p`, {
@@ -3488,6 +4253,73 @@ var bi = class extends Component {
       : this.props.children;
   }
 };
+function musicStoredOff() {
+  try {
+    return localStorage.getItem(`havn-music`) === `0`;
+  } catch {
+    return !1;
+  }
+}
+function rememberMusic(off) {
+  try {
+    localStorage.setItem(`havn-music`, off ? `0` : `1`);
+  } catch {}
+}
+function useThemeMusic() {
+  let audioRef = (0, useRef)(null),
+    [off, setOff] = (0, useState)(musicStoredOff);
+  (0, useEffect)(() => {
+    let audio = new Audio(`/assets/havn-theme.mp3`);
+    audio.loop = !0;
+    audio.volume = 0.24;
+    audioRef.current = audio;
+    let kick = () => {
+      window.removeEventListener(`pointerdown`, kick);
+      window.removeEventListener(`keydown`, kick);
+      if (!musicStoredOff()) audio.play().catch(() => {});
+    };
+    if (!musicStoredOff()) audio.play().catch(() => {
+      window.addEventListener(`pointerdown`, kick);
+      window.addEventListener(`keydown`, kick);
+    });
+    return () => {
+      window.removeEventListener(`pointerdown`, kick);
+      window.removeEventListener(`keydown`, kick);
+      audio.pause();
+      audioRef.current = null;
+    };
+  }, []);
+  let toggle = (0, useCallback)(() => {
+    setOff((prev) => {
+      let next = !prev;
+      rememberMusic(next);
+      let audio = audioRef.current;
+      if (audio) next ? audio.pause() : audio.play().catch(() => {});
+      return next;
+    });
+  }, []);
+  return [off, toggle];
+}
+function MusicButton({ off, onClick, label }) {
+  return jsx(B, {
+    type: `button`,
+    size: `icon`,
+    variant: `ghost`,
+    onClick,
+    "aria-label": label,
+    "aria-pressed": !off,
+    children: jsxs(`span`, {
+      className: `relative grid place-items-center`,
+      children: [
+        jsx(Music, { className: off ? `opacity-40` : undefined }),
+        off &&
+          jsx(`span`, {
+            className: `pointer-events-none absolute h-px w-4 rotate-45 bg-current`,
+          }),
+      ],
+    }),
+  });
+}
 function xi({ onLeaveMatch } = {}) {
   let e = useGame((e) => e.state),
     t = useGame((e) => e.hydrate),
@@ -3511,15 +4343,25 @@ function xi({ onLeaveMatch } = {}) {
     g = useLocaleStore((e) => e.ready),
     _ = useT(),
     [v, y] = (0, useState)(null),
-    [ee, te] = (0, useState)(!1);
+    [ee, te] = (0, useState)(!1),
+    [notice, setNotice] = (0, useState)(null),
+    rollSeen = (0, useRef)({ key: ``, until: 0 }),
+    [musicOff, toggleMusic] = useThemeMusic();
   if (
     ((0, useEffect)(() => {
       (h(), t());
     }, [t, h]),
     (0, useEffect)(() => {
       if (!e || e.phase === `gameOver` || !e.players[yn(e)]?.isAi) return;
-      let t = e.tradeOffer ? 420 : e.phase === `setup` ? 320 : e.phase === `roll` ? 520 : 640,
-        n = window.setTimeout(() => f(), t);
+      let delay = e.tradeOffer ? 800 : e.phase === `setup` ? 450 : e.phase === `roll` ? 1400 : 700;
+      if (e.lastRoll && e.phase !== `roll`) {
+        let key = `${e.currentPlayer}:${e.turnNumber}:${e.lastRoll.d1}:${e.lastRoll.d2}`;
+        if (rollSeen.current.key !== key) {
+          rollSeen.current = { key, until: Date.now() + 1800 };
+        }
+        delay = Math.max(delay, rollSeen.current.until - Date.now());
+      }
+      let n = window.setTimeout(() => f(), Math.max(200, delay));
       return () => window.clearTimeout(n);
     }, [
       e?.revision,
@@ -3536,8 +4378,19 @@ function xi({ onLeaveMatch } = {}) {
       return () => window.clearTimeout(e);
     }, [m]),
     (0, useEffect)(() => {
-      function e(e) {
-        if (e.key !== `Escape`) return;
+      function onKey(ev) {
+        let tag = ev.target?.tagName;
+        if (tag === `INPUT` || tag === `TEXTAREA` || tag === `SELECT`) return;
+        if (ev.key === ` ` || ev.key === `Spacebar`) {
+          let t = useGame.getState().state;
+          if (!t || t.phase !== `roll`) return;
+          let actor = t.players[t.currentPlayer];
+          if (!actor || actor.isAi || actor.id !== useGame.getState().viewerId) return;
+          ev.preventDefault();
+          a({ type: `roll` });
+          return;
+        }
+        if (ev.key !== `Escape`) return;
         (c(null), y(null));
         let t = useGame.getState().state;
         t?.tradeOffer &&
@@ -3546,10 +4399,21 @@ function xi({ onLeaveMatch } = {}) {
           a({ type: `cancelTrade` });
       }
       return (
-        window.addEventListener(`keydown`, e),
-        () => window.removeEventListener(`keydown`, e)
+        window.addEventListener(`keydown`, onKey),
+        () => window.removeEventListener(`keydown`, onKey)
       );
     }, [c, a]),
+    (0, useEffect)(() => {
+      let line = e?.log?.[e.log.length - 1];
+      if (!line) return;
+      setNotice(line);
+      let id = line.id;
+      let timer = window.setTimeout(
+        () => setNotice((cur) => (cur?.id === id ? null : cur)),
+        2600,
+      );
+      return () => window.clearTimeout(timer);
+    }, [e?.logSeq]),
     !g)
   )
     return jsx(`div`, { className: `min-h-dvh bg-bg` });
@@ -3565,17 +4429,19 @@ function xi({ onLeaveMatch } = {}) {
     return jsxs(Fragment, {
       children: [
         jsx(yi, {
-          onStart: (seats) => {
-            (resetMatch(), n({ seats }), nav({ search: {} }));
+          onStart: (seats, pro, sea) => {
+            (resetMatch(), n({ seats, pro, mode: sea ? SEA_MODE : void 0 }), nav({ search: {} }));
           },
           onContinue: () => {
             (resetMatch(), r(), nav({ search: {} }));
           },
           onRules: () => te(!0),
-          onInvite: (seats) => {
-            let room = startInvite(seats);
+          onInvite: (seats, pro, sea) => {
+            let room = startInvite(seats, pro, sea);
             if (room) nav({ search: { match: room } });
           },
+          musicOff,
+          onMusic: toggleMusic,
         }),
         m &&
           jsx(`div`, {
@@ -3590,17 +4456,19 @@ function xi({ onLeaveMatch } = {}) {
     x = e.players[ne] ?? e.players[e.currentPlayer];
   if (!x)
     return jsx(yi, {
-      onStart: (seats) => {
-        (resetMatch(), n({ seats }), nav({ search: {} }));
+      onStart: (seats, pro, sea) => {
+        (resetMatch(), n({ seats, pro, mode: sea ? SEA_MODE : void 0 }), nav({ search: {} }));
       },
       onContinue: () => {
         (resetMatch(), r(), nav({ search: {} }));
       },
       onRules: () => te(!0),
-      onInvite: (seats) => {
-        let room = startInvite(seats);
+      onInvite: (seats, pro, sea) => {
+        let room = startInvite(seats, pro, sea);
         if (room) nav({ search: { match: room } });
       },
+      musicOff,
+      onMusic: toggleMusic,
     });
   let S,
     C,
@@ -3626,11 +4494,24 @@ function xi({ onLeaveMatch } = {}) {
     }
   }
   function D(e) {
-    C &&
-      ((T.phase === `setup` && T.setupNeed === `road`) ||
-        T.phase === `roadBuilding` ||
-        (T.phase === `main` && o === `road`)) &&
-      a({ type: `placeRoad`, edgeId: e });
+    if (!C) return;
+    if (typeof o === `string` && o.startsWith(`moveShip`)) {
+      if (T.phase !== `main`) return;
+      if (o === `moveShip`) {
+        movableShips(T, T.currentPlayer).includes(e) && c(`moveShip:${e}`);
+        return;
+      }
+      let from = o.slice(9);
+      e === from ? c(`moveShip`) : a({ type: `moveShip`, from, to: e });
+      return;
+    }
+    let free = (T.phase === `setup` && T.setupNeed === `road`) || T.phase === `roadBuilding`,
+      roadOk = (free || (T.phase === `main` && o === `road`)) && On(T, T.currentPlayer).includes(e),
+      shipOk =
+        isSea(T) && (free || (T.phase === `main` && o === `ship`)) && shipSpots(T, T.currentPlayer).includes(e);
+    shipOk && (!roadOk || o === `ship`)
+      ? a({ type: `placeShip`, edgeId: e })
+      : roadOk && a({ type: `placeRoad`, edgeId: e });
   }
   function oe(e) {
     if (!C || T.phase !== `robber`) return;
@@ -3672,9 +4553,17 @@ function xi({ onLeaveMatch } = {}) {
                     jsx(`p`, {
                       className: `text-[11px] text-muted lg:text-xs`,
                       children:
-                        e.turnNumber > 0 ? _(`ui.round`, { n: e.turnNumber }) : _(`ui.setup`),
+                        (e.turnNumber > 0 ? _(`ui.round`, { n: e.turnNumber }) : _(`ui.setup`)) +
+                        (e.pro ? ` · Pro` : ``) +
+                        (isSea(e) ? ` · ${_(`start.sea`)}` : ``),
                     }),
                   ],
+                }),
+                jsx(`span`, { id: `havn-ai-slot`, className: `contents` }),
+                jsx(MusicButton, {
+                  off: musicOff,
+                  onClick: toggleMusic,
+                  label: _(musicOff ? `ui.musicOn` : `ui.musicOff`),
                 }),
                 jsx(B, {
                   type: `button`,
@@ -3712,6 +4601,27 @@ function xi({ onLeaveMatch } = {}) {
               ],
             }),
             jsx($r, { state: e, viewer: S }),
+            e.undoBank?.player === S &&
+              jsxs(`div`, {
+                className: `mx-3 mt-1 flex items-center justify-between gap-2 rounded-[var(--radius-md)] border border-border bg-surface px-3 py-2 text-sm`,
+                children: [
+                  jsx(`span`, { children: _(`ui.undoHint`) }),
+                  jsx(B, {
+                    type: `button`,
+                    size: `sm`,
+                    variant: `secondary`,
+                    onClick: () => a({ type: `undoBank` }),
+                    children: _(`ui.undo`),
+                  }),
+                ],
+              }),
+            e.tradeOffer &&
+              jsx(tradeBanner, {
+                state: e,
+                viewerId: S,
+                onRespond: (accept) => a({ type: `respondTrade`, accept, playerId: S }),
+                onCancel: () => a({ type: `cancelTrade` }),
+              }),
             jsxs(`div`, {
               className: `flex min-h-0 flex-1 flex-col lg:flex-row`,
               children: [
@@ -3726,6 +4636,11 @@ function xi({ onLeaveMatch } = {}) {
                       onEdge: D,
                       onHex: oe,
                     }),
+                    notice &&
+                      jsx(`div`, {
+                        className: `pointer-events-none absolute top-2 left-1/2 z-10 max-w-[min(24rem,calc(100%-1rem))] -translate-x-1/2 rounded-[var(--radius-md)] border border-border bg-surface/95 px-3 py-1.5 text-center text-sm shadow-panel`,
+                        children: notice.text,
+                      }),
                     e.lastRoll &&
                       jsxs(`div`, {
                         className: `pointer-events-none absolute top-1 right-2 z-10 flex items-center gap-2 rounded-[var(--radius-md)] border border-border bg-surface/90 px-2 py-1 shadow-panel lg:hidden`,
@@ -3761,6 +4676,13 @@ function xi({ onLeaveMatch } = {}) {
             className: `pointer-events-none absolute top-16 left-1/2 z-40 -translate-x-1/2 rounded-[var(--radius-md)] border border-border bg-surface px-4 py-2 text-sm shadow-panel`,
             children: m,
           }),
+        e.phase === `gold` &&
+          C &&
+          jsx(
+            goldDialog,
+            { state: e, playerId: ne, onConfirm: (r) => a({ type: `pickGold`, resources: r }) },
+            `gold-${e.revision}`,
+          ),
         e.phase === `discard` &&
           C &&
           jsx(
@@ -3769,18 +4691,15 @@ function xi({ onLeaveMatch } = {}) {
             ne,
           ),
         e.tradeOffer &&
-          (matchRole === `solo`
-            ? !e.players[e.tradeOffer.to]?.isAi
-            : e.tradeOffer.to === viewerId) &&
-          jsx(fi, { state: e, onRespond: (e) => a({ type: `respondTrade`, accept: e }) }),
-        e.tradeOffer &&
-          (e.players[e.tradeOffer.to]?.isAi ||
-            (matchRole !== `solo` &&
-              e.tradeOffer.to !== viewerId &&
-              e.tradeOffer.from === viewerId)) &&
-          jsx(mi, { state: e, onCancel: () => a({ type: `cancelTrade` }) }),
+          offerPending(e).includes(S) &&
+          !e.players[S]?.isAi &&
+          jsx(fi, {
+            state: e,
+            viewerId: S,
+            onRespond: (accept) => a({ type: `respondTrade`, accept, playerId: S }),
+          }),
         e.phase === `gameOver` && jsx(_i, { state: e, onMenu: leave }),
-        v?.kind === `rules` && jsx(si, { onClose: () => y(null) }),
+        v?.kind === `rules` && jsx(si, { onClose: () => y(null), sea: isSea(e) }),
         v?.kind === `exit` &&
           jsx(vi, {
             onCancel: () => y(null),

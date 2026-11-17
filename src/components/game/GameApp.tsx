@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { MatchBridge } from "@/components/game/MatchBridge";
+import { BotBridge } from "@/components/game/BotBridge";
 import { HavnTable, useGame } from "@/game/store-api";
 import { t } from "@/game/i18n";
 import { HOST_SEAT, isRoomCode } from "@/game/match";
@@ -94,6 +95,7 @@ export function GameApp({
     <div className="relative min-h-dvh bg-bg">
       <div data-testid="havn-webmcp" data-status={webmcp} hidden />
       <HavnTable onLeaveMatch={leaveToTitle} />
+      <BotBridge />
       {matchRoom && matchRole !== "solo" ? (
         <MatchBridge room={matchRoom} name={matchRole === "host" ? hostName : guestName} />
       ) : null}

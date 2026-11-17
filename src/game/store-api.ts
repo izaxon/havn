@@ -22,8 +22,8 @@ export interface GameStore {
   inviteOpen: boolean;
   viewerId: number;
   hydrate: () => void;
-  start: (opts: { seats: unknown }) => void;
-  startInvite: (seats: unknown) => string;
+  start: (opts: { seats: unknown; pro?: boolean; mode?: "sea" }) => void;
+  startInvite: (seats: unknown, pro?: boolean, sea?: boolean) => string;
   continueSave: () => void;
   toMenu: () => void;
   dispatch: (action: unknown) => void;
