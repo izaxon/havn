@@ -1,6 +1,7 @@
 /** Read-only view and legal-action list for an external assistant. Rules stay in the engine. */
 import { actingPlayerId, asBoard, tradePending } from "./match";
 import { tryAction } from "./game";
+import { movableShips, shipSpots, shipTargets, type SeaState } from "./archipelago";
 
 const RESOURCES = ["wood", "brick", "wool", "grain", "ore"] as const;
 type Resource = (typeof RESOURCES)[number];
@@ -25,6 +26,7 @@ interface Edge {
   a: string;
   b: string;
   road?: { player: number } | null;
+  ship?: { player: number } | null;
   port?: { kind: string } | null;
 }
 interface Hex {
@@ -49,6 +51,8 @@ interface Player {
   knightsPlayed: number;
   hasLongestRoad: boolean;
   hasLargestArmy: boolean;
+  shipsLeft?: number;
+  islands?: number[];
 }
 export interface LiveState {
   revision: number;
@@ -68,6 +72,9 @@ export interface LiveState {
   log: { id: number; text: string }[];
   pendingFreeRoads: number;
   pro?: boolean;
+  mode?: string;
+  pirateHexId?: string | null;
+  goldQueue?: { player: number; n: number }[];
 }
 
 export interface SessionInfo {
@@ -83,6 +90,16 @@ const COSTS = {
   city: { grain: 2, ore: 3 },
   development: { wool: 1, grain: 1, ore: 1 },
 };
+const SEA_COSTS = { ...COSTS, ship: { wood: 1, wool: 1 } };
+
+function costsFor(state: LiveState) {
+  return state.mode === "sea" ? SEA_COSTS : COSTS;
+}
+
+function goldNeedOf(state: LiveState): number {
+  const head = state.goldQueue?.[0];
+  return head ? Math.min(head.n, total(state.bank)) : 0;
+}
 
 function apply(state: unknown, action: AgentAction): TryResult {
   return tryAction(state, action) as TryResult;
@@ -115,6 +132,7 @@ function publicPoints(state: LiveState, player: Player): number {
   }
   if (player.hasLongestRoad) points += 2;
   if (player.hasLargestArmy) points += 2;
+  points += (player.islands?.length ?? 0) * 2;
   return points;
 }
 
@@ -142,6 +160,7 @@ function projectPlayer(state: LiveState, player: Player, viewerId: number) {
         },
     pieces: {
       roadsLeft: player.roadsLeft,
+      ...(player.shipsLeft != null ? { shipsLeft: player.shipsLeft } : {}),
       settlementsLeft: player.settlementsLeft,
       citiesLeft: player.citiesLeft,
     },
@@ -161,6 +180,14 @@ export function yourTurn(state: LiveState, viewerId: number): boolean {
 
 function keep(state: LiveState, action: AgentAction, into: AgentAction[]) {
   if (apply(state, action).ok) into.push(action);
+}
+
+function addShips(state: LiveState, viewerId: number, into: AgentAction[]) {
+  if (state.mode !== "sea") return;
+  for (const edgeId of shipSpots(state as unknown as SeaState, viewerId)) {
+    const edge = state.board.edges.find((item) => item.id === edgeId);
+    keep(state, { type: "placeShip", edgeId, a: edge?.a, b: edge?.b }, into);
+  }
 }
 
 function discards(have: Bag, need: number): Bag[] {
@@ -209,9 +236,17 @@ export function legalActions(state: LiveState, viewerId: number): AgentAction[] 
       for (const vertex of state.board.vertices)
         keep(state, { type: "placeSettlement", vertexId: vertex.id, hexes: vertex.hexIds ?? [] }, actions);
     } else {
-      for (const edge of state.board.edges)
+      for (const edge of state.board.edges) {
         keep(state, { type: "placeRoad", edgeId: edge.id, a: edge.a, b: edge.b }, actions);
+      }
+      addShips(state, viewerId, actions);
     }
+    return actions;
+  }
+  if (phase === "gold") {
+    const need = goldNeedOf(state);
+    for (const resources of discards(state.bank, need))
+      keep(state, { type: "pickGold", resources, count: need }, actions);
     return actions;
   }
   if (phase === "roll") {
@@ -243,14 +278,23 @@ export function legalActions(state: LiveState, viewerId: number): AgentAction[] 
     return actions;
   }
   if (phase === "roadBuilding") {
-    for (const edge of state.board.edges)
+    for (const edge of state.board.edges) {
       keep(state, { type: "placeRoad", edgeId: edge.id, a: edge.a, b: edge.b }, actions);
+    }
+    addShips(state, viewerId, actions);
     keep(state, { type: "skipFreeRoad" }, actions);
     return actions;
   }
   if (phase !== "main") return actions;
-  for (const edge of state.board.edges)
+  for (const edge of state.board.edges) {
     keep(state, { type: "placeRoad", edgeId: edge.id, a: edge.a, b: edge.b }, actions);
+  }
+  addShips(state, viewerId, actions);
+  if (state.mode === "sea") {
+    const sea = state as unknown as SeaState;
+    for (const from of movableShips(sea, viewerId))
+      for (const to of shipTargets(sea, viewerId, from)) keep(state, { type: "moveShip", from, to }, actions);
+  }
   for (const vertex of state.board.vertices) {
     keep(state, { type: "placeSettlement", vertexId: vertex.id, hexes: vertex.hexIds ?? [] }, actions);
     keep(state, { type: "placeCity", vertexId: vertex.id }, actions);
@@ -299,8 +343,12 @@ export function projectState(state: LiveState, session: SessionInfo) {
   return {
     ok: true as const,
     game: "Havn",
-    rules: "Catan rules. First to 10 victory points wins. A knight may be played before the roll. Cards bought this turn cannot be played yet.",
-    costs: COSTS,
+    rules:
+      state.mode === "sea"
+        ? "Catan rules with the archipelago extension. First to 13 victory points wins. Ships (wood + wool) sail on sea edges and link to roads only at your own settlement or city; once per turn you may move one ship at the open end of a route. A seven or knight moves either the robber (land) or the pirate (sea; it robs players with ships next to it and blocks ships there). Gold rivers pay any resource you choose (pickGold). Your first settlement on each outlying island earns 2 victory points. Roads and ships together count toward the longest route."
+        : "Catan rules. First to 10 victory points wins. A knight may be played before the roll. Cards bought this turn cannot be played yet.",
+    costs: costsFor(state),
+    mode: state.mode ?? "classic",
     session: {
       ...session,
       yourName: you?.name ?? null,
@@ -314,6 +362,8 @@ export function projectState(state: LiveState, session: SessionInfo) {
     currentPlayer: state.currentPlayer,
     winnerId: state.winnerId,
     robberHexId: state.robberHexId,
+    pirateHexId: state.pirateHexId ?? null,
+    goldToPick: state.phase === "gold" ? goldNeedOf(state) : 0,
     lastRoll: state.lastRoll,
     pendingFreeRoads: state.phase === "roadBuilding" ? state.pendingFreeRoads : 0,
     bank: { ...emptyBag(), ...state.bank },
@@ -340,6 +390,7 @@ export function projectState(state: LiveState, session: SessionInfo) {
       terrain: hex.terrain,
       number: hex.number,
       robber: hex.id === state.robberHexId,
+      pirate: hex.id === state.pirateHexId,
     })),
     vertices: state.board.vertices.map((vertex) => ({
       id: vertex.id,
@@ -350,6 +401,9 @@ export function projectState(state: LiveState, session: SessionInfo) {
     roads: state.board.edges
       .filter((edge) => edge.road)
       .map((edge) => ({ edgeId: edge.id, playerId: edge.road!.player, a: edge.a, b: edge.b })),
+    ships: state.board.edges
+      .filter((edge) => edge.ship)
+      .map((edge) => ({ edgeId: edge.id, playerId: edge.ship!.player, a: edge.a, b: edge.b })),
     ports: state.board.edges
       .filter((edge) => edge.port)
       .map((edge) => ({
@@ -378,6 +432,7 @@ export function stepComputers(state: LiveState): LiveState {
       actions.find((action) => action.type === "placeSettlement") ??
       actions.find((action) => action.type === "placeRoad") ??
       actions.find((action) => action.type === "discard") ??
+      actions.find((action) => action.type === "pickGold") ??
       actions.find((action) => action.type === "moveRobber") ??
       actions.find((action) => action.type === "skipFreeRoad") ??
       actions.find((action) => action.type === "endTurn") ??
@@ -419,6 +474,9 @@ const TERRAIN_SV: Record<string, string> = {
   grain: "vete",
   ore: "malm",
   desert: "öken",
+  sea: "hav",
+  lake: "sjö",
+  gold: "guldflod",
 };
 
 const PLAYER_COLORS = ["#b42318", "#2b5f8a", "#e8dcc4", "#1f6b56"];
@@ -451,7 +509,7 @@ export function publicPhase(state: LiveState): string {
   if (state.phase === "gameOver") return "ended";
   if (state.tradeOffer) return "trade";
   if (state.phase === "setup" || state.phase === "roll" || state.phase === "main") return state.phase;
-  if (state.phase === "discard" || state.phase === "robber") return state.phase;
+  if (state.phase === "discard" || state.phase === "robber" || state.phase === "gold") return state.phase;
   if (state.phase === "roadBuilding") return "main";
   return state.phase;
 }
@@ -522,6 +580,7 @@ export function describeAttention(state: LiveState, seat: number) {
   if (!yours) return { reason: "waiting", yourTurn: false, notice: `Väntar på ${actor?.name ?? ""}` };
   if (state.phase === "discard") return { reason: "discard", yourTurn: true, notice: "Släng kort" };
   if (state.phase === "robber") return { reason: "robber", yourTurn: true, notice: "Flytta rövaren" };
+  if (state.phase === "gold") return { reason: "gold", yourTurn: true, notice: "Välj råvaror ur guldfloden" };
   if (state.phase === "roll") return { reason: "your_turn", yourTurn: true, notice: "Din tur: slå tärning" };
   if (state.phase === "setup") return { reason: "your_turn", yourTurn: true, notice: "Din tur: grundlägg" };
   return { reason: "your_turn", yourTurn: true, notice: "Din tur" };
@@ -557,7 +616,8 @@ export function apiView(state: LiveState, seat: number) {
     ref: edge.id,
     from: refs.junction.get(edge.a) ?? edge.a,
     to: refs.junction.get(edge.b) ?? edge.b,
-    owner: edge.road ? edge.road.player : null,
+    owner: edge.road ? edge.road.player : edge.ship ? edge.ship.player : null,
+    piece: edge.road ? "road" : edge.ship ? "ship" : null,
   }));
   const ports = state.board.edges
     .filter((edge) => edge.port)
@@ -575,8 +635,14 @@ export function apiView(state: LiveState, seat: number) {
     you: seat,
     yourTurn: attention.yourTurn,
     attention,
-    needsResponse: attention.reason === "trade_offer" || attention.reason === "discard" || attention.reason === "robber",
-    costs: COSTS,
+    needsResponse:
+      attention.reason === "trade_offer" ||
+      attention.reason === "discard" ||
+      attention.reason === "robber" ||
+      attention.reason === "gold",
+    costs: costsFor(state),
+    mode: state.mode ?? "classic",
+    goldToPick: state.phase === "gold" ? goldNeedOf(state) : 0,
     portRates: Object.fromEntries(RESOURCES.map((resource) => [resource, tradeRate(state, seat, resource)])),
     phase,
     pro: !!state.pro,
@@ -627,13 +693,15 @@ export function apiView(state: LiveState, seat: number) {
       };
     }),
     board: {
-      robber: refs.hex.get(state.robberHexId) ?? state.robberHexId,
+      robber: state.robberHexId ? (refs.hex.get(state.robberHexId) ?? state.robberHexId) : null,
+      pirate: state.pirateHexId ? (refs.hex.get(state.pirateHexId) ?? state.pirateHexId) : null,
       hexes: state.board.hexes.map((hex) => ({
         id: refs.hex.get(hex.id) ?? hex.id,
         ref: hex.id,
         resource: hex.terrain,
         number: hex.number,
         robber: hex.id === state.robberHexId,
+        pirate: hex.id === state.pirateHexId,
         q: hex.q,
         r: hex.r,
       })),

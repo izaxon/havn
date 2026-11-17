@@ -26,6 +26,7 @@ export type MatchBoard = {
   phase: string;
   players: SeatPlayer[];
   discardQueue?: number[];
+  goldQueue?: { player: number; n: number }[];
   tradeOffer?: { from?: number; to: number } | null;
 };
 
@@ -84,6 +85,7 @@ export function tradePending(state: MatchBoard): number[] {
 
 export function actingPlayerId(state: MatchBoard): number {
   if (state.phase === "discard") return state.discardQueue?.[0] ?? state.currentPlayer;
+  if (state.phase === "gold") return state.goldQueue?.[0]?.player ?? state.currentPlayer;
   if (state.tradeOffer) return tradePending(state)[0] ?? state.currentPlayer;
   return state.currentPlayer;
 }
