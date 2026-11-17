@@ -29,13 +29,14 @@ import {
   User,
   Volume2,
   VolumeX,
+  Music,
   X as XIcon,
   Link2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
-import { t as i, useT, useLocaleStore, aiNames, youNames, allAiNames, LocaleSwitch } from "@/game/i18n";
+import { t as i, useT, useLocaleStore, aiNames, youNames, friendNames, allAiNames, LocaleSwitch } from "@/game/i18n";
 import { makeRoomCode } from "@/game/match";
 
 
@@ -296,11 +297,13 @@ function vn(e) {
   return [...t, ...t.slice().reverse()];
 }
 function yn(e) {
-  return e.phase === `discard`
-    ? (e.discardQueue[0] ?? e.currentPlayer)
-    : e.tradeOffer
-      ? e.tradeOffer.to
-      : e.currentPlayer;
+  if (e.phase === `discard`) return e.discardQueue[0] ?? e.currentPlayer;
+  if (e.tradeOffer) {
+    let t = offerPending(e),
+      n = t.find((t) => e.players[t]?.isAi);
+    return n ?? t[0] ?? e.currentPlayer;
+  }
+  return e.currentPlayer;
 }
 function q(e, t) {
   return e.board.vertices.find((e) => e.id === t);
@@ -424,6 +427,59 @@ function Fn(e, t, n) {
   }
   return ((i += a.size * 1.8), r.port && (r.port.kind === `generic` ? (i += 1.2) : (i += 1.6)), i);
 }
+function ownedNumbers(e, t) {
+  let n = new Set();
+  for (let r of e.board.vertices) {
+    if (r.building?.player !== t) continue;
+    for (let i of r.hexIds) {
+      let r = xn(e, i);
+      r?.number != null && n.add(r.number);
+    }
+  }
+  return n;
+}
+function proSpot(e, t, n) {
+  let r = Fn(e, t, or(e, n)),
+    i = q(e, t);
+  if (!i) return r;
+  let a = new Set(or(e, n)),
+    o = ownedNumbers(e, n);
+  for (let t of i.hexIds) {
+    let n = xn(e, t);
+    !n ||
+      n.id === e.robberHexId ||
+      !hn(n.terrain) ||
+      ((n.terrain === `ore` || n.terrain === `grain`) && !a.has(n.terrain) && (r += 2.4),
+      n.number != null && o.has(n.number) && (r -= Pn(n.number) * 0.85),
+      (n.number === 6 || n.number === 8) && !o.has(n.number) && (r += 1.2));
+  }
+  return (i.port && (r += i.port.kind === `generic` ? 0.8 : 1.6), r);
+}
+function spotScore(e, t, n) {
+  return e.pro ? proSpot(e, t, n) : Fn(e, t, or(e, n));
+}
+function knightTakesArmy(e, t) {
+  let n = (e.players[t]?.knightsPlayed ?? 0) + 1;
+  if (n < 3) return !1;
+  let r = 0;
+  for (let i of e.players) i.id !== t && (r = Math.max(r, i.knightsPlayed));
+  return n > r;
+}
+function missingCards(e, t) {
+  let n = 0;
+  for (let r of V) n += Math.max(0, (t[r] ?? 0) - (e[r] ?? 0));
+  return n;
+}
+function oneCardFrom(e, t) {
+  return !K(e, t) && missingCards(e, t) === 1;
+}
+function handsCity(e, t, n, r) {
+  let i = e.players[t];
+  if (!i || i.citiesLeft <= 0) return !1;
+  let a = W();
+  for (let e of V) a[e] = (i.resources[e] ?? 0) - (n[e] ?? 0) + (r[e] ?? 0);
+  return !K(i.resources, U.city) && K(a, U.city);
+}
 function In(e, t, n) {
   let r = new Set();
   for (let i of e.board.vertices)
@@ -498,21 +554,18 @@ var Y = {
 function Bn(e, t, viewerId) {
   let n = e.players[yn(e)],
     isViewer = viewerId == null || n?.id === viewerId,
-    r = n && (n.isAi || !isViewer) ? n.name : i(`ui.youPronoun`);
+    r = n?.name ?? ``;
   if (e.tradeOffer) {
     let offer = e.tradeOffer,
       from = e.players[offer.from],
-      to = e.players[offer.to];
-    if (viewerId != null) {
-      if (to?.id === viewerId)
-        return i(`hint.wantsTrade`, {
-          name: from?.id === viewerId ? i(`ui.youPronoun`) : (from?.name ?? ``),
-        });
-      return i(`hint.waitFor`, { name: to?.name ?? `` });
-    }
-    return to?.isAi
-      ? i(`hint.waitFor`, { name: to.name })
-      : i(`hint.wantsTrade`, { name: from?.isAi ? from.name : i(`ui.youPronoun`) });
+      pending = offerPending(e);
+    if (pending.includes(viewerId)) return i(`hint.wantsTrade`, { name: from?.name ?? `` });
+    return i(`hint.waitFor`, {
+      name: pending
+        .map((t) => e.players[t]?.name)
+        .filter(Boolean)
+        .join(`, `),
+    });
   }
   if (!isViewer && n && !n.isAi) return i(`hint.waitFor`, { name: n.name });
   switch (e.phase) {
@@ -563,6 +616,12 @@ function Z(e, t) {
 function Q(e, t) {
   let n = e.players[t];
   return (Z(n, i(`engine.badPlayer`)), n);
+}
+function offerPending(e) {
+  let t = e.tradeOffer;
+  if (!t) return [];
+  if (Array.isArray(t.pending) && t.pending.length) return t.pending.filter((n) => e.players[n]);
+  return typeof t.to === `number` && t.to >= 0 && e.players[t.to] ? [t.to] : [];
 }
 function Un(e, t, n) {
   let r = e.hand.indexOf(t);
@@ -747,6 +806,7 @@ function er(e) {
     log: [],
     logSeq: 0,
     seed: t,
+    pro: !!e.pro,
   };
   return (pushLog(s, i(`engine.setupLog`)), s);
 }
@@ -754,6 +814,7 @@ function tr(e, t) {
   if (e.phase === `gameOver` || e.phase === `menu`) throw new Jt(i(`engine.notRunning`));
   if (e.tradeOffer && t.type !== `respondTrade` && t.type !== `cancelTrade`)
     throw new Jt(i(`engine.waitTrade`));
+  if (t.type !== `undoBank`) e.undoBank = null;
   let n = yn(e);
   switch (t.type) {
     case `placeSettlement`: {
@@ -972,6 +1033,7 @@ function tr(e, t) {
         (e.bank[t.give] += a),
         --e.bank[t.get],
         (r.resources[t.get] += 1),
+        (e.undoBank = { player: r.id, give: t.give, get: t.get, rate: a }),
         pushLog(
           e,
           i(`engine.bankSwap`, {
@@ -983,35 +1045,78 @@ function tr(e, t) {
         ));
       return;
     }
+    case `undoBank`: {
+      Z(e.phase === `main`, i(`engine.notNow`));
+      let u = e.undoBank;
+      Z(u, i(`engine.notNow`));
+      let r = Q(e, e.currentPlayer);
+      (Z(n === r.id && r.id === u.player, i(`engine.notYourTurn`)),
+        Z(r.resources[u.get] >= 1, i(`engine.noThoseCards`)),
+        Z(e.bank[u.give] >= u.rate, i(`engine.bankEmpty`)),
+        (r.resources[u.get] -= 1),
+        (e.bank[u.get] += 1),
+        (e.bank[u.give] -= u.rate),
+        (r.resources[u.give] += u.rate),
+        (e.undoBank = null),
+        pushLog(e, i(`engine.undoBank`, { name: r.name })));
+      return;
+    }
     case `offerTrade`: {
       Z(e.phase === `main`, i(`engine.notNow`));
       let r = Q(e, e.currentPlayer);
       Z(n === r.id, i(`engine.notYourTurn`));
-      let a = Q(e, t.to);
-      Z(a.id !== r.id, i(`engine.selfTrade`));
+      let targets =
+        t.to === -1
+          ? e.players.filter((e) => e.id !== r.id).map((e) => e.id)
+          : [Q(e, t.to).id];
+      Z(targets.length > 0 && targets.every((e) => e !== r.id), i(`engine.selfTrade`));
       let o = G(t.give),
         s = G(t.want);
       Z(o > 0 && s > 0, i(`engine.bothWays`));
       for (let e of V) Z(r.resources[e] >= t.give[e], i(`engine.noThoseCards`));
-      ((e.tradeOffer = { from: r.id, to: a.id, give: { ...t.give }, want: { ...t.want } }),
+      let other = targets.map((t) => e.players[t]?.name).filter(Boolean).join(`, `);
+      ((e.tradeOffer = {
+        from: r.id,
+        to: targets.length === 1 ? targets[0] : -1,
+        pending: targets,
+        give: { ...t.give },
+        want: { ...t.want },
+      }),
         (e.offeredTradeThisTurn = !0),
-        pushLog(e, i(`engine.offers`, { name: r.name, other: a.name })));
+        pushLog(e, i(`engine.offers`, { name: r.name, other })));
       return;
     }
     case `respondTrade`: {
-      let n = e.tradeOffer;
-      Z(n, i(`engine.noOffer`));
-      let r = Q(e, n.from),
-        a = Q(e, n.to);
-      if (!(t.accept && K(r.resources, n.give) && K(a.resources, n.want))) {
-        (pushLog(e, i(`engine.declines`, { name: a.name })), (e.tradeOffer = null));
+      let offer = e.tradeOffer;
+      Z(offer, i(`engine.noOffer`));
+      let pending = offerPending(e),
+        who =
+          typeof t.playerId === `number` && pending.includes(t.playerId)
+            ? t.playerId
+            : pending.length === 1
+              ? pending[0]
+              : null;
+      Z(who != null, i(`engine.noOffer`));
+      let r = Q(e, offer.from),
+        a = Q(e, who);
+      if (!(t.accept && K(r.resources, offer.give) && K(a.resources, offer.want))) {
+        let rest = pending.filter((e) => e !== who);
+        pushLog(e, i(`engine.declines`, { name: a.name }));
+        e.tradeOffer =
+          rest.length === 0
+            ? null
+            : {
+                ...offer,
+                pending: rest,
+                to: rest.length === 1 ? rest[0] : -1,
+              };
         return;
       }
       for (let e of V)
-        ((r.resources[e] -= n.give[e]),
-          (a.resources[e] += n.give[e]),
-          (a.resources[e] -= n.want[e]),
-          (r.resources[e] += n.want[e]));
+        ((r.resources[e] -= offer.give[e]),
+          (a.resources[e] += offer.give[e]),
+          (a.resources[e] -= offer.want[e]),
+          (r.resources[e] += offer.want[e]));
       (pushLog(e, i(`engine.accepts`, { name: a.name, other: r.name })), (e.tradeOffer = null));
       return;
     }
@@ -1076,12 +1181,11 @@ function or(e, t) {
 }
 function sr(e, t, n) {
   if (t.length === 0) return null;
-  let r = or(e, n),
-    i = t[0],
+  let i = t[0],
     a = -1 / 0;
-  for (let n of t) {
-    let t = Fn(e, n, r);
-    t > a && ((a = t), (i = n));
+  for (let r of t) {
+    let t = spotScore(e, r, n);
+    t > a && ((a = t), (i = r));
   }
   return i;
 }
@@ -1102,7 +1206,15 @@ function cr(e, t) {
   return r;
 }
 function lr(e, t) {
-  let n = [];
+  let n = [],
+    leader = -1,
+    lead = -1;
+  if (e.pro)
+    for (let r of e.players)
+      if (r.id !== t) {
+        let n = Mn(e, r.id);
+        n > lead && ((lead = n), (leader = r.id));
+      }
   for (let r of e.board.hexes) {
     if (r.id === e.robberHexId) continue;
     let i = In(e, r.id, t),
@@ -1116,6 +1228,12 @@ function lr(e, t) {
         i = n * 3 + r;
       (i > s && ((s = i), (o = t)), (a += i));
     }
+    e.pro &&
+      leader >= 0 &&
+      e.board.vertices.some(
+        (n) => n.hexIds.includes(r.id) && n.building?.player === leader,
+      ) &&
+      (a += Pn(r.number) * 3 + 4);
     (e.board.vertices.some((e) => e.hexIds.includes(r.id) && e.building?.player === t) && (a -= 8),
       n.push({ hexId: r.id, score: a, stealFrom: o }));
   }
@@ -1151,8 +1269,9 @@ function dr(e, t, n) {
     )[0];
   if (!a) return null;
   let o = W(),
-    s = W();
-  return ((o[i] = 1), (s[n] = 1), { type: `offerTrade`, to: a.id, give: o, want: s });
+    s = W(),
+    qty = e.pro && r.resources[i] >= 4 ? 2 : 1;
+  return ((o[i] = qty), (s[n] = 1), { type: `offerTrade`, to: a.id, give: o, want: s });
 }
 function fr(e, t, n) {
   let r = e.players[t],
@@ -1184,7 +1303,7 @@ function mr(e, t) {
 function hr(e, t) {
   let n = e.players[t];
   if (e.playedDevThisTurn) return null;
-  if (n.hand.includes(`knight`) && (mr(e, t) || n.knightsPlayed === 2))
+  if (n.hand.includes(`knight`) && (mr(e, t) || n.knightsPlayed === 2 || (e.pro && knightTakesArmy(e, t))))
     return { type: `playKnight` };
   if (e.phase !== `main`) return null;
   if (n.hand.includes(`monopoly`)) {
@@ -1219,7 +1338,7 @@ function gr(e, t) {
   if (n.length === 0) return null;
   let r = e.board.vertices
       .filter((t) => !t.building && _r(e, t.id))
-      .sort((t, n) => Fn(e, n.id) - Fn(e, t.id))
+      .sort((a, b) => spotScore(e, b.id, t) - spotScore(e, a.id, t))
       .slice(0, 4),
     i = n[0],
     a = -1;
@@ -1239,6 +1358,44 @@ function _r(e, t) {
         .filter((e) => e.a === t || e.b === t)
         .every((n) => !q(e, n.a === t ? n.b : n.a)?.building);
 }
+function roadLengthIf(e, edgeId, playerId) {
+  let edge = e.board.edges.find((n) => n.id === edgeId);
+  if (!edge || edge.road) return Nn(e, playerId);
+  let prev = edge.road;
+  edge.road = { player: playerId };
+  try {
+    return Nn(e, playerId);
+  } finally {
+    edge.road = prev;
+  }
+}
+function proRoadAction(e, t) {
+  if (!e.pro) return null;
+  let n = e.players[t];
+  if (!n || n.roadsLeft <= 0 || !K(n.resources, U.road)) return null;
+  if (Dn(e, t).length && n.settlementsLeft > 0 && K(n.resources, U.settlement)) return null;
+  let edges = On(e, t);
+  if (!edges.length) return null;
+  let mine = Nn(e, t),
+    bestOther = 0;
+  for (let r of e.players) r.id !== t && (bestOther = Math.max(bestOther, Nn(e, r.id)));
+  let best = null,
+    score = -1;
+  for (let id of edges) {
+    let edge = e.board.edges.find((n) => n.id === id);
+    if (!edge) continue;
+    let len = roadLengthIf(e, id, t),
+      dest = 0;
+    for (let vid of [edge.a, edge.b]) {
+      let v = q(e, vid);
+      v && !v.building && (dest = Math.max(dest, proSpot(e, vid, t)));
+    }
+    let s = (len - mine) * 8 + dest * 0.5;
+    len >= 5 && len > bestOther && (s += 24);
+    s > score && ((score = s), (best = id));
+  }
+  return best != null && score >= 8 ? { type: `placeRoad`, edgeId: best } : null;
+}
 function vr(e, t) {
   let n = e.players[t],
     r = Mn(e, t);
@@ -1247,13 +1404,13 @@ function vr(e, t) {
     a = Dn(e, t),
     o = On(e, t);
   if (r >= 8 && i.length && rr(n.resources, U.city) && n.citiesLeft > 0)
-    return { type: `placeCity`, vertexId: i[0] };
+    return { type: `placeCity`, vertexId: e.pro ? sr(e, i, t) : i[0] };
   if (r >= 9 && a.length && rr(n.resources, U.settlement) && n.settlementsLeft > 0)
     return { type: `placeSettlement`, vertexId: sr(e, a, t) };
   let s = hr(e, t);
   if (s) return s;
   if (i.length && n.citiesLeft > 0) {
-    if (rr(n.resources, U.city)) return { type: `placeCity`, vertexId: i[0] };
+    if (rr(n.resources, U.city)) return { type: `placeCity`, vertexId: e.pro ? sr(e, i, t) : i[0] };
     let r = fr(e, t, U.city);
     if (r) return r;
     let a = ur(e, t, U.city);
@@ -1267,7 +1424,10 @@ function vr(e, t) {
     if (i) return i;
   }
   if (a.length === 0 && o.length && n.roadsLeft > 0) {
-    if (rr(n.resources, U.road)) {
+    if (e.pro) {
+      let road = proRoadAction(e, t);
+      if (road) return road;
+    } else if (rr(n.resources, U.road)) {
       let n = gr(e, t);
       if (n) return { type: `placeRoad`, edgeId: n };
     } else {
@@ -1277,11 +1437,17 @@ function vr(e, t) {
       if (r) return r;
     }
   }
-  if (e.deck.length > 0 && rr(n.resources, U.dev)) return { type: `buyDev` };
-  if (e.deck.length > 0) {
+  if (e.pro) {
+    let road = proRoadAction(e, t);
+    if (road) return road;
+  }
+  let saveForCity = e.pro && n.citiesLeft > 0 && i.length > 0 && oneCardFrom(n.resources, U.city);
+  if (!saveForCity && e.deck.length > 0 && rr(n.resources, U.dev)) return { type: `buyDev` };
+  if (!saveForCity && e.deck.length > 0) {
     let n = fr(e, t, U.dev);
     if (n) return n;
   }
+  if (saveForCity) return { type: `endTurn` };
   let c = ur(e, t, U.dev);
   return c && e.deck.length > 0 ? c : pr(e, t) || { type: `endTurn` };
 }
@@ -1289,14 +1455,22 @@ function yr(e) {
   if (e.phase === `gameOver` || e.phase === `menu`) return null;
   if (e.tradeOffer) {
     let t = e.tradeOffer,
-      n = e.players[t.to];
-    if (!n?.isAi) return null;
-    if (!K(n.resources, t.want)) return { type: `respondTrade`, accept: !1 };
+      pending = offerPending(e),
+      ai = pending.find((t) => e.players[t]?.isAi);
+    if (ai == null) return null;
+    let n = e.players[ai];
+    if (!K(n.resources, t.want)) return { type: `respondTrade`, accept: !1, playerId: ai };
+    if (e.pro && handsCity(e, t.from, t.give, t.want))
+      return { type: `respondTrade`, accept: !1, playerId: ai };
     let r = G(t.give),
       i = G(t.want),
       a = V.some((e) => t.give[e] > 0 && n.resources[e] <= 1),
       o = V.some((e) => t.want[e] > 0 && n.resources[e] - t.want[e] <= 0);
-    return { type: `respondTrade`, accept: (r >= i && !o) || (a && r + 1 >= i) };
+    return {
+      type: `respondTrade`,
+      accept: (r >= i && !o) || (a && r + 1 >= i),
+      playerId: ai,
+    };
   }
   let t = yn(e),
     n = e.players[t];
@@ -1315,16 +1489,19 @@ function yr(e) {
         let r = e.lastSettlementId,
           i = n[0],
           a = -1 / 0;
-        for (let t of n) {
-          let n = e.board.edges.find((e) => e.id === t);
-          if (!n) continue;
-          let o = Fn(e, n.a === r ? n.b : n.a);
-          o > a && ((a = o), (i = t));
+        for (let edgeId of n) {
+          let edge = e.board.edges.find((e) => e.id === edgeId);
+          if (!edge) continue;
+          let far = edge.a === r ? edge.b : edge.a,
+            o = spotScore(e, far, t);
+          o > a && ((a = o), (i = edgeId));
         }
         return { type: `placeRoad`, edgeId: i };
       }
     case `roll`:
-      return !e.playedDevThisTurn && n.hand.includes(`knight`) && mr(e, t)
+      return !e.playedDevThisTurn &&
+        n.hand.includes(`knight`) &&
+        (mr(e, t) || (e.pro && knightTakesArmy(e, t)))
         ? { type: `playKnight` }
         : { type: `roll` };
     case `robber`:
@@ -1499,11 +1676,11 @@ export const useGame = create((e, t) => ({
     let n = er(opts);
     (Sr(n), e({ state: n, buildMode: null, error: null, ...matchDefaults }));
   },
-  startInvite: (seats) => {
+  startInvite: (seats, pro) => {
     try {
       Or();
       let room = t().matchRoom || makeRoomCode();
-      let n = er({ seats: forceFriendSeats(seats) });
+      let n = er({ seats: forceFriendSeats(seats), pro: !!pro });
       (Sr(n),
         e({
           state: n,
@@ -1547,10 +1724,7 @@ export const useGame = create((e, t) => ({
       e({
         state: a.state,
         error: null,
-        buildMode:
-          n.type === `placeRoad` || n.type === `placeSettlement` || n.type === `placeCity`
-            ? null
-            : t().buildMode,
+        buildMode: null,
       }));
     if (g.matchRole === `host`) publishState(a.state);
   },
@@ -1558,7 +1732,7 @@ export const useGame = create((e, t) => ({
     if (!remote) return !1;
     let cur = t().state;
     if (cur && (remote.revision ?? 0) < (cur.revision ?? 0)) return !1;
-    e({ state: remote, error: null });
+    e({ state: remote, error: null, buildMode: null });
     return !0;
   },
   setMatch: (patch) => e(patch),
@@ -2074,7 +2248,7 @@ function Qr({
               type: `button`,
               className: `col-span-3 lg:col-span-2`,
               onClick: a,
-              children: [jsx(g, { className: `size-4` }), f(`ui.roll`)],
+              children: [jsx(g, { className: `size-4` }), f(`ui.rollHint`)],
             }),
           e.phase === `roadBuilding` &&
             n &&
@@ -2144,9 +2318,9 @@ function Qr({
         ],
       }),
       jsx(`div`, {
-        className: `hidden max-h-32 space-y-1 overflow-auto text-xs text-muted lg:block`,
+        className: `hidden max-h-32 flex-col-reverse gap-0.5 overflow-auto text-xs text-muted lg:flex`,
         children: e.log
-          .slice(-8)
+          .slice(-12)
           .reverse()
           .map((e) => jsx(`p`, { children: e.text }, e.id)),
       }),
@@ -2449,8 +2623,8 @@ function ii({ state: e, buildMode: t, disabled: n, onVertex: r, onEdge: i, onHex
         e.board.edges
           .filter((e) => e.port)
           .map((e) => {
-            let t = e.midX + e.ox * 50,
-              n = e.midY + e.oy * 50,
+            let t = e.midX + e.ox * 36,
+              n = e.midY + e.oy * 36,
               r = e.port;
             return jsxs(
               `g`,
@@ -2611,6 +2785,26 @@ function ii({ state: e, buildMode: t, disabled: n, onVertex: r, onEdge: i, onHex
                 t.id,
               );
         }),
+        e.board.vertices
+          .filter((t) => t.port)
+          .map((t) =>
+            jsx(
+              `circle`,
+              {
+                cx: t.x,
+                cy: t.y,
+                r: `11`,
+                fill: `none`,
+                stroke: `#e6c27a`,
+                strokeWidth: `2`,
+                pointerEvents: `none`,
+                children: jsx(`title`, {
+                  children: `${i(`ui.portNote`)} ${t.port.kind === `generic` ? `3:1` : `2:1`}`,
+                }),
+              },
+              `port-node-${t.id}`,
+            ),
+          ),
       ],
     }),
   });
@@ -2618,8 +2812,38 @@ function ii({ state: e, buildMode: t, disabled: n, onVertex: r, onEdge: i, onHex
 function ai({ compact: e = !1 }) {
   return jsx(LocaleSwitch, { compact: e });
 }
-function oi({ title: e, children: t, onClose: n }) {
-  let r = useT();
+function oi({ title: e, children: t, onClose: n, dock: dock }) {
+  let r = useT(),
+    panel = jsxs(`div`, {
+      className: dock
+        ? `pointer-events-auto max-h-[48dvh] w-full overflow-y-auto rounded-[var(--radius-xl)] border border-border bg-surface/95 p-4 shadow-panel sm:max-h-[calc(100dvh-5rem)] sm:w-[22rem]`
+        : `relative max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-t-[var(--radius-xl)] border border-border bg-surface p-5 shadow-panel sm:rounded-[var(--radius-xl)]`,
+      children: [
+        jsxs(`div`, {
+          className: `mb-3 flex items-start justify-between gap-3`,
+          children: [
+            jsx(`h2`, {
+              className: `font-display text-xl font-semibold tracking-tight`,
+              children: e,
+            }),
+            n &&
+              jsx(`button`, {
+                type: `button`,
+                className: `grid size-10 place-items-center rounded-[var(--radius-sm)] text-muted hover:text-fg`,
+                onClick: n,
+                "aria-label": r(`ui.close`),
+                children: jsx(ae, { className: `size-5` }),
+              }),
+          ],
+        }),
+        t,
+      ],
+    });
+  if (dock)
+    return jsx(`div`, {
+      className: `pointer-events-none fixed inset-x-0 bottom-0 z-40 p-3 sm:inset-y-0 sm:left-auto sm:flex sm:items-start sm:p-4 sm:pt-16 lg:right-80`,
+      children: panel,
+    });
   return jsxs(`div`, {
     className: `fixed inset-0 z-50 flex items-end justify-center sm:items-center`,
     children: [
@@ -2629,29 +2853,7 @@ function oi({ title: e, children: t, onClose: n }) {
         "aria-label": r(`ui.close`),
         onClick: n,
       }),
-      jsxs(`div`, {
-        className: `relative max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-t-[var(--radius-xl)] border border-border bg-surface p-5 shadow-panel sm:rounded-[var(--radius-xl)]`,
-        children: [
-          jsxs(`div`, {
-            className: `mb-4 flex items-start justify-between gap-3`,
-            children: [
-              jsx(`h2`, {
-                className: `font-display text-xl font-semibold tracking-tight`,
-                children: e,
-              }),
-              n &&
-                jsx(`button`, {
-                  type: `button`,
-                  className: `grid size-10 place-items-center rounded-[var(--radius-sm)] text-muted hover:text-fg`,
-                  onClick: n,
-                  "aria-label": r(`ui.close`),
-                  children: jsx(ae, { className: `size-5` }),
-                }),
-            ],
-          }),
-          t,
-        ],
-      }),
+      panel,
     ],
   });
 }
@@ -2664,11 +2866,58 @@ function si({ onClose: e }) {
       jsxs(`div`, {
         className: `max-h-[60dvh] space-y-3 overflow-auto text-sm leading-relaxed text-muted`,
         children: [
+          jsxs(`div`, {
+            className: `rounded-[var(--radius-md)] bg-surface-2 px-3 py-2 text-sm`,
+            children: [
+              jsx(`p`, {
+                className: `text-xs font-medium tracking-[0.14em] text-fg uppercase`,
+                children: t(`ui.costs`),
+              }),
+              jsx(`ul`, {
+                className: `mt-2 space-y-1`,
+                children: [
+                  [`road`, `ui.road`],
+                  [`settlement`, `ui.settle`],
+                  [`city`, `ui.city`],
+                  [`dev`, `ui.card`],
+                ].map(([key, label]) =>
+                  jsxs(
+                    `li`,
+                    {
+                      className: `flex justify-between gap-3`,
+                      children: [
+                        jsx(`span`, { className: `text-fg`, children: t(label) }),
+                        jsx(`span`, {
+                          children: V.filter((r) => U[key]?.[r])
+                            .map((r) => `${U[key][r]} ${Y[r].toLowerCase()}`)
+                            .join(`, `),
+                        }),
+                      ],
+                    },
+                    key,
+                  ),
+                ),
+              }),
+              jsx(`p`, { className: `mt-2`, children: t(`ui.odds`) }),
+              jsx(`p`, { children: t(`ui.portNote`) }),
+            ],
+          }),
           jsx(`p`, { children: t(`rules.p1`) }),
           jsx(`p`, { children: t(`rules.p2`) }),
           jsx(`p`, { children: t(`rules.p3`) }),
           jsx(`p`, { children: t(`rules.p4`) }),
           jsx(`p`, { children: t(`rules.p5`) }),
+          jsxs(`p`, {
+            children: [
+              t(`rules.api`),
+              " ",
+              jsx(`a`, {
+                href: `/api/docs`,
+                className: `underline`,
+                children: `/api/docs`,
+              }),
+            ],
+          }),
         ],
       }),
       jsxs(`div`, {
@@ -2814,13 +3063,18 @@ function li({ state: e, playerId: t, onBank: n, onOffer: r, onClose: i }) {
     [s, c] = (0, useState)(`bank`),
     [l, d] = (0, useState)(`wood`),
     [f, p] = (0, useState)(`brick`),
-    [m, h] = (0, useState)(e.players.find((e) => e.id !== t)?.id ?? 0),
+    [m, h] = (0, useState)(
+      e.players.filter((e) => e.id !== t).length > 1
+        ? -1
+        : (e.players.find((e) => e.id !== t)?.id ?? 0),
+    ),
     [g, _] = (0, useState)(W),
     [v, y] = (0, useState)(W),
     b = An(e, t, l);
   return jsxs(oi, {
     title: a(`ui.tradeTitle`),
     onClose: i,
+    dock: !0,
     children: [
       jsx(wi, {
         label: a(`ui.youHave`),
@@ -2877,11 +3131,15 @@ function li({ state: e, playerId: t, onBank: n, onOffer: r, onClose: i }) {
                   a(`ui.to`),
                   jsx(`select`, {
                     className: `mt-1 h-11 w-full rounded-[var(--radius-sm)] border border-border bg-surface-2 px-3 text-fg`,
-                    value: m,
+                    value: String(m),
                     onChange: (e) => h(Number(e.target.value)),
-                    children: e.players
-                      .filter((e) => e.id !== t)
-                      .map((e) => jsx(`option`, { value: e.id, children: e.name }, e.id)),
+                    children: [
+                      e.players.filter((e) => e.id !== t).length > 1 &&
+                        jsx(`option`, { value: `-1`, children: a(`ui.toAll`) }, `all`),
+                      ...e.players
+                        .filter((e) => e.id !== t)
+                        .map((e) => jsx(`option`, { value: String(e.id), children: e.name }, e.id)),
+                    ],
                   }),
                 ],
               }),
@@ -2970,11 +3228,79 @@ function di({ bank: e, max: t, onChange: n }) {
     ),
   });
 }
-function fi({ state: e, onRespond: t }) {
+function tradeBanner({ state: e, viewerId: viewer, onRespond: respond, onCancel: cancel }) {
+  let t = useT(),
+    offer = e.tradeOffer;
+  if (!offer) return null;
+  let pending = offerPending(e),
+    from = e.players[offer.from],
+    names = pending
+      .map((id) => e.players[id]?.name)
+      .filter(Boolean)
+      .join(`, `),
+    give = V.filter((r) => offer.give[r] > 0)
+      .map((r) => `${offer.give[r]} ${Y[r].toLowerCase()}`)
+      .join(`, `),
+    want = V.filter((r) => offer.want[r] > 0)
+      .map((r) => `${offer.want[r]} ${Y[r].toLowerCase()}`)
+      .join(`, `),
+    open = pending.length > 1;
+  return jsxs(`div`, {
+    className: `mx-3 mt-1 rounded-[var(--radius-md)] border border-accent/50 bg-surface px-3 py-2 text-sm shadow-panel`,
+    "data-testid": `trade-banner`,
+    children: [
+      jsx(`p`, {
+        children: t(
+          open ? `ui.tradeBannerAll` : `ui.tradeBanner`,
+          {
+            from: from?.name ?? ``,
+            to: names,
+            give: give || `—`,
+            want: want || `—`,
+          },
+        ),
+      }),
+      viewer === offer.from &&
+        jsx(`p`, {
+          className: `mt-1 text-xs text-muted`,
+          children: t(`ui.tradeWaiting`, { name: names }),
+        }),
+      pending.includes(viewer) &&
+        jsxs(`div`, {
+          className: `mt-2 flex gap-2`,
+          children: [
+            jsx(B, {
+              type: `button`,
+              size: `sm`,
+              variant: `secondary`,
+              onClick: () => respond(!1),
+              children: t(`ui.decline`),
+            }),
+            jsx(B, {
+              type: `button`,
+              size: `sm`,
+              onClick: () => respond(!0),
+              children: t(`ui.accept`),
+            }),
+          ],
+        }),
+      viewer === offer.from &&
+        jsx(B, {
+          type: `button`,
+          size: `sm`,
+          variant: `secondary`,
+          className: `mt-2`,
+          onClick: cancel,
+          children: t(`ui.retract`),
+        }),
+    ],
+  });
+}
+function fi({ state: e, viewerId: viewer, onRespond: t }) {
   let n = useT(),
     r = e.tradeOffer,
     i = e.players[r.from],
-    a = e.players[r.to],
+    a = e.players[viewer],
     have = a?.resources ?? W(),
     next = W();
   for (let res of V) next[res] = (have[res] ?? 0) - (r.want[res] ?? 0) + (r.give[res] ?? 0);
@@ -2983,7 +3309,18 @@ function fi({ state: e, onRespond: t }) {
     afterN = G(next);
   return jsxs(oi, {
     title: n(`ui.wantsTrade`, { name: i.name }),
+    dock: !0,
     children: [
+      jsxs(`p`, {
+        className: `mb-3 flex items-center gap-2 text-sm text-muted`,
+        children: [
+          jsx(`span`, {
+            className: `size-3 shrink-0 rounded-full`,
+            style: { background: (H[i.colorIndex] ?? H[0]).fill },
+          }),
+          n(`ui.theirCards`, { name: i.name, n: G(i.resources) }),
+        ],
+      }),
       jsx(wi, {
         label: n(`ui.youHave`),
         resources: have,
@@ -3230,7 +3567,7 @@ function vi({ onCancel: e, onConfirm: t }) {
     ],
   });
 }
-function yi({ onStart: t, onContinue: n, onRules: r, onInvite: onInvite }) {
+function yi({ onStart: t, onContinue: n, onRules: r, onInvite: onInvite, musicOff, onMusic }) {
   let i = useT(),
     a = useLocaleStore((e) => e.locale),
     [s, c] = (0, useState)(() => {
@@ -3241,24 +3578,26 @@ function yi({ onStart: t, onContinue: n, onRules: r, onInvite: onInvite }) {
         { name: e[1], isAi: !0, colorIndex: 2 },
       ];
     }),
-    [f, p] = (0, useState)(!1);
+    [f, p] = (0, useState)(!1),
+    [pro, setPro] = (0, useState)(!1);
   ((0, useEffect)(() => {
     p(Ir());
   }, []),
     (0, useEffect)(() => {
-      let e = i(`start.you`),
-        t = aiNames(a),
+      let t = aiNames(a),
         n = youNames(),
+        friends = friendNames(),
         r = allAiNames();
-      c((a) => {
+      c((list) => {
         let o = 0;
-        return a.map((a) => {
-          if (!a.isAi && (a.name === `` || n.has(a.name))) return { ...a, name: e };
-          if (a.isAi && (r.has(a.name) || a.name === ``)) {
+        return list.map((seat, index) => {
+          if (!seat.isAi && (seat.name === `` || n.has(seat.name) || friends.has(seat.name)))
+            return { ...seat, name: i(`start.playerN`, { n: index + 1 }) };
+          if (seat.isAi && (r.has(seat.name) || seat.name === ``)) {
             let e = t[o] ?? i(`start.computer`);
-            return ((o += 1), { ...a, name: e });
+            return ((o += 1), { ...seat, name: e });
           }
-          return (a.isAi && (o += 1), a);
+          return (seat.isAi && (o += 1), seat);
         });
       });
     }, [a, i]));
@@ -3290,7 +3629,17 @@ function yi({ onStart: t, onContinue: n, onRules: r, onInvite: onInvite }) {
                     className: `text-xs font-medium tracking-[0.22em] text-accent uppercase`,
                     children: i(`start.kicker`),
                   }),
-                  jsx(ai, { compact: !0 }),
+                  jsxs(`div`, {
+                    className: `flex items-center gap-1`,
+                    children: [
+                      jsx(MusicButton, {
+                        off: musicOff,
+                        onClick: onMusic,
+                        label: i(musicOff ? `ui.musicOn` : `ui.musicOff`),
+                      }),
+                      jsx(ai, { compact: !0 }),
+                    ],
+                  }),
                 ],
               }),
               jsx(`h1`, {
@@ -3374,9 +3723,7 @@ function yi({ onStart: t, onContinue: n, onRules: r, onInvite: onInvite }) {
                               isAi: n,
                               name: n
                                 ? (r[o] ?? i(`start.computer`))
-                                : t === 0
-                                  ? i(`start.you`)
-                                  : i(`mp.friend`),
+                                : i(`start.playerN`, { n: t + 1 }),
                             });
                           },
                           children: [
@@ -3409,12 +3756,39 @@ function yi({ onStart: t, onContinue: n, onRules: r, onInvite: onInvite }) {
           jsxs(`div`, {
             className: `flex flex-col gap-2`,
             children: [
+              jsx(`button`, {
+                type: `button`,
+                onClick: () => setPro((v) => !v),
+                "aria-pressed": pro,
+                className: R(
+                  `flex w-full items-center justify-between gap-3 rounded-[var(--radius-md)] border px-3 py-2 text-left`,
+                  pro ? `border-accent bg-surface` : `border-border bg-surface/80`,
+                ),
+                children: [
+                  jsxs(`span`, {
+                    children: [
+                      jsx(`span`, {
+                        className: `block text-sm font-medium text-fg`,
+                        children: i(`start.pro`),
+                      }),
+                      jsx(`span`, {
+                        className: `block text-xs text-muted`,
+                        children: i(`start.proHint`),
+                      }),
+                    ],
+                  }),
+                  jsx(`span`, {
+                    className: `shrink-0 text-xs font-medium`,
+                    children: pro ? i(`start.proOn`) : i(`start.proOff`),
+                  }),
+                ],
+              }),
               jsx(B, {
                 type: `button`,
                 size: `lg`,
                 className: `w-full`,
                 "data-testid": `start-game`,
-                onClick: () => t(s),
+                onClick: () => t(s, pro),
                 children: i(`start.startGame`),
               }),
               onInvite &&
@@ -3426,7 +3800,7 @@ function yi({ onStart: t, onContinue: n, onRules: r, onInvite: onInvite }) {
                       variant: `secondary`,
                       className: `w-full`,
                       "data-testid": `invite-friend`,
-                      onClick: () => onInvite(s),
+                      onClick: () => onInvite(s, pro),
                       children: i(`mp.invite`),
                     }),
                     jsx(`p`, {
@@ -3488,6 +3862,73 @@ var bi = class extends Component {
       : this.props.children;
   }
 };
+function musicStoredOff() {
+  try {
+    return localStorage.getItem(`havn-music`) === `0`;
+  } catch {
+    return !1;
+  }
+}
+function rememberMusic(off) {
+  try {
+    localStorage.setItem(`havn-music`, off ? `0` : `1`);
+  } catch {}
+}
+function useThemeMusic() {
+  let audioRef = (0, useRef)(null),
+    [off, setOff] = (0, useState)(musicStoredOff);
+  (0, useEffect)(() => {
+    let audio = new Audio(`/assets/havn-theme.mp3`);
+    audio.loop = !0;
+    audio.volume = 0.24;
+    audioRef.current = audio;
+    let kick = () => {
+      window.removeEventListener(`pointerdown`, kick);
+      window.removeEventListener(`keydown`, kick);
+      if (!musicStoredOff()) audio.play().catch(() => {});
+    };
+    if (!musicStoredOff()) audio.play().catch(() => {
+      window.addEventListener(`pointerdown`, kick);
+      window.addEventListener(`keydown`, kick);
+    });
+    return () => {
+      window.removeEventListener(`pointerdown`, kick);
+      window.removeEventListener(`keydown`, kick);
+      audio.pause();
+      audioRef.current = null;
+    };
+  }, []);
+  let toggle = (0, useCallback)(() => {
+    setOff((prev) => {
+      let next = !prev;
+      rememberMusic(next);
+      let audio = audioRef.current;
+      if (audio) next ? audio.pause() : audio.play().catch(() => {});
+      return next;
+    });
+  }, []);
+  return [off, toggle];
+}
+function MusicButton({ off, onClick, label }) {
+  return jsx(B, {
+    type: `button`,
+    size: `icon`,
+    variant: `ghost`,
+    onClick,
+    "aria-label": label,
+    "aria-pressed": !off,
+    children: jsxs(`span`, {
+      className: `relative grid place-items-center`,
+      children: [
+        jsx(Music, { className: off ? `opacity-40` : undefined }),
+        off &&
+          jsx(`span`, {
+            className: `pointer-events-none absolute h-px w-4 rotate-45 bg-current`,
+          }),
+      ],
+    }),
+  });
+}
 function xi({ onLeaveMatch } = {}) {
   let e = useGame((e) => e.state),
     t = useGame((e) => e.hydrate),
@@ -3511,15 +3952,25 @@ function xi({ onLeaveMatch } = {}) {
     g = useLocaleStore((e) => e.ready),
     _ = useT(),
     [v, y] = (0, useState)(null),
-    [ee, te] = (0, useState)(!1);
+    [ee, te] = (0, useState)(!1),
+    [notice, setNotice] = (0, useState)(null),
+    rollSeen = (0, useRef)({ key: ``, until: 0 }),
+    [musicOff, toggleMusic] = useThemeMusic();
   if (
     ((0, useEffect)(() => {
       (h(), t());
     }, [t, h]),
     (0, useEffect)(() => {
       if (!e || e.phase === `gameOver` || !e.players[yn(e)]?.isAi) return;
-      let t = e.tradeOffer ? 420 : e.phase === `setup` ? 320 : e.phase === `roll` ? 520 : 640,
-        n = window.setTimeout(() => f(), t);
+      let delay = e.tradeOffer ? 800 : e.phase === `setup` ? 450 : e.phase === `roll` ? 1400 : 700;
+      if (e.lastRoll && e.phase !== `roll`) {
+        let key = `${e.currentPlayer}:${e.turnNumber}:${e.lastRoll.d1}:${e.lastRoll.d2}`;
+        if (rollSeen.current.key !== key) {
+          rollSeen.current = { key, until: Date.now() + 1800 };
+        }
+        delay = Math.max(delay, rollSeen.current.until - Date.now());
+      }
+      let n = window.setTimeout(() => f(), Math.max(200, delay));
       return () => window.clearTimeout(n);
     }, [
       e?.revision,
@@ -3536,8 +3987,19 @@ function xi({ onLeaveMatch } = {}) {
       return () => window.clearTimeout(e);
     }, [m]),
     (0, useEffect)(() => {
-      function e(e) {
-        if (e.key !== `Escape`) return;
+      function onKey(ev) {
+        let tag = ev.target?.tagName;
+        if (tag === `INPUT` || tag === `TEXTAREA` || tag === `SELECT`) return;
+        if (ev.key === ` ` || ev.key === `Spacebar`) {
+          let t = useGame.getState().state;
+          if (!t || t.phase !== `roll`) return;
+          let actor = t.players[t.currentPlayer];
+          if (!actor || actor.isAi || actor.id !== useGame.getState().viewerId) return;
+          ev.preventDefault();
+          a({ type: `roll` });
+          return;
+        }
+        if (ev.key !== `Escape`) return;
         (c(null), y(null));
         let t = useGame.getState().state;
         t?.tradeOffer &&
@@ -3546,10 +4008,21 @@ function xi({ onLeaveMatch } = {}) {
           a({ type: `cancelTrade` });
       }
       return (
-        window.addEventListener(`keydown`, e),
-        () => window.removeEventListener(`keydown`, e)
+        window.addEventListener(`keydown`, onKey),
+        () => window.removeEventListener(`keydown`, onKey)
       );
     }, [c, a]),
+    (0, useEffect)(() => {
+      let line = e?.log?.[e.log.length - 1];
+      if (!line) return;
+      setNotice(line);
+      let id = line.id;
+      let timer = window.setTimeout(
+        () => setNotice((cur) => (cur?.id === id ? null : cur)),
+        2600,
+      );
+      return () => window.clearTimeout(timer);
+    }, [e?.logSeq]),
     !g)
   )
     return jsx(`div`, { className: `min-h-dvh bg-bg` });
@@ -3565,17 +4038,19 @@ function xi({ onLeaveMatch } = {}) {
     return jsxs(Fragment, {
       children: [
         jsx(yi, {
-          onStart: (seats) => {
-            (resetMatch(), n({ seats }), nav({ search: {} }));
+          onStart: (seats, pro) => {
+            (resetMatch(), n({ seats, pro }), nav({ search: {} }));
           },
           onContinue: () => {
             (resetMatch(), r(), nav({ search: {} }));
           },
           onRules: () => te(!0),
-          onInvite: (seats) => {
-            let room = startInvite(seats);
+          onInvite: (seats, pro) => {
+            let room = startInvite(seats, pro);
             if (room) nav({ search: { match: room } });
           },
+          musicOff,
+          onMusic: toggleMusic,
         }),
         m &&
           jsx(`div`, {
@@ -3590,17 +4065,19 @@ function xi({ onLeaveMatch } = {}) {
     x = e.players[ne] ?? e.players[e.currentPlayer];
   if (!x)
     return jsx(yi, {
-      onStart: (seats) => {
-        (resetMatch(), n({ seats }), nav({ search: {} }));
+      onStart: (seats, pro) => {
+        (resetMatch(), n({ seats, pro }), nav({ search: {} }));
       },
       onContinue: () => {
         (resetMatch(), r(), nav({ search: {} }));
       },
       onRules: () => te(!0),
-      onInvite: (seats) => {
-        let room = startInvite(seats);
+      onInvite: (seats, pro) => {
+        let room = startInvite(seats, pro);
         if (room) nav({ search: { match: room } });
       },
+      musicOff,
+      onMusic: toggleMusic,
     });
   let S,
     C,
@@ -3672,9 +4149,16 @@ function xi({ onLeaveMatch } = {}) {
                     jsx(`p`, {
                       className: `text-[11px] text-muted lg:text-xs`,
                       children:
-                        e.turnNumber > 0 ? _(`ui.round`, { n: e.turnNumber }) : _(`ui.setup`),
+                        (e.turnNumber > 0 ? _(`ui.round`, { n: e.turnNumber }) : _(`ui.setup`)) +
+                        (e.pro ? ` · Pro` : ``),
                     }),
                   ],
+                }),
+                jsx(`span`, { id: `havn-ai-slot`, className: `contents` }),
+                jsx(MusicButton, {
+                  off: musicOff,
+                  onClick: toggleMusic,
+                  label: _(musicOff ? `ui.musicOn` : `ui.musicOff`),
                 }),
                 jsx(B, {
                   type: `button`,
@@ -3712,6 +4196,27 @@ function xi({ onLeaveMatch } = {}) {
               ],
             }),
             jsx($r, { state: e, viewer: S }),
+            e.undoBank?.player === S &&
+              jsxs(`div`, {
+                className: `mx-3 mt-1 flex items-center justify-between gap-2 rounded-[var(--radius-md)] border border-border bg-surface px-3 py-2 text-sm`,
+                children: [
+                  jsx(`span`, { children: _(`ui.undoHint`) }),
+                  jsx(B, {
+                    type: `button`,
+                    size: `sm`,
+                    variant: `secondary`,
+                    onClick: () => a({ type: `undoBank` }),
+                    children: _(`ui.undo`),
+                  }),
+                ],
+              }),
+            e.tradeOffer &&
+              jsx(tradeBanner, {
+                state: e,
+                viewerId: S,
+                onRespond: (accept) => a({ type: `respondTrade`, accept, playerId: S }),
+                onCancel: () => a({ type: `cancelTrade` }),
+              }),
             jsxs(`div`, {
               className: `flex min-h-0 flex-1 flex-col lg:flex-row`,
               children: [
@@ -3726,6 +4231,11 @@ function xi({ onLeaveMatch } = {}) {
                       onEdge: D,
                       onHex: oe,
                     }),
+                    notice &&
+                      jsx(`div`, {
+                        className: `pointer-events-none absolute top-2 left-1/2 z-10 max-w-[min(24rem,calc(100%-1rem))] -translate-x-1/2 rounded-[var(--radius-md)] border border-border bg-surface/95 px-3 py-1.5 text-center text-sm shadow-panel`,
+                        children: notice.text,
+                      }),
                     e.lastRoll &&
                       jsxs(`div`, {
                         className: `pointer-events-none absolute top-1 right-2 z-10 flex items-center gap-2 rounded-[var(--radius-md)] border border-border bg-surface/90 px-2 py-1 shadow-panel lg:hidden`,
@@ -3769,16 +4279,13 @@ function xi({ onLeaveMatch } = {}) {
             ne,
           ),
         e.tradeOffer &&
-          (matchRole === `solo`
-            ? !e.players[e.tradeOffer.to]?.isAi
-            : e.tradeOffer.to === viewerId) &&
-          jsx(fi, { state: e, onRespond: (e) => a({ type: `respondTrade`, accept: e }) }),
-        e.tradeOffer &&
-          (e.players[e.tradeOffer.to]?.isAi ||
-            (matchRole !== `solo` &&
-              e.tradeOffer.to !== viewerId &&
-              e.tradeOffer.from === viewerId)) &&
-          jsx(mi, { state: e, onCancel: () => a({ type: `cancelTrade` }) }),
+          offerPending(e).includes(S) &&
+          !e.players[S]?.isAi &&
+          jsx(fi, {
+            state: e,
+            viewerId: S,
+            onRespond: (accept) => a({ type: `respondTrade`, accept, playerId: S }),
+          }),
         e.phase === `gameOver` && jsx(_i, { state: e, onMenu: leave }),
         v?.kind === `rules` && jsx(si, { onClose: () => y(null) }),
         v?.kind === `exit` &&

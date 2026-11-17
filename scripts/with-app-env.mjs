@@ -104,24 +104,6 @@ export function isMainModule(moduleUrl) {
   }
 }
 
-/**
- * On Windows, map a bare package command (`vite`) to that package's JS bin so
- * it can be run with `process.execPath`. Returns null everywhere else, for
- * commands given as paths, and for anything that is not an installed package
- * with a matching `bin` entry — those spawn unchanged.
- */
-export function resolveNodeBin(command, root = projectRoot()) {
-  if (process.platform !== "win32" || /[\\/]/.test(command)) return null;
-  try {
-    const pkgPath = join(root, "node_modules", command, "package.json");
-    const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
-    const bin = typeof pkg.bin === "string" ? pkg.bin : pkg.bin?.[command];
-    return bin ? join(dirname(pkgPath), bin) : null;
-  } catch {
-    return null;
-  }
-}
-
 function main(argv) {
   const [command, ...args] = argv;
   if (!command) {
@@ -129,14 +111,7 @@ function main(argv) {
     process.exit(2);
   }
   const env = mergeAppEnv(readAppEnv(projectRoot()), process.env);
-  // On Windows the npm-installed binaries are `.cmd` shims that `spawn` cannot
-  // run without a shell (which would mangle the arguments), so a bare package
-  // command is resolved to the package's own JS entry and run with this node.
-  const binPath = resolveNodeBin(command);
-  const options = { stdio: "inherit", env };
-  const child = binPath
-    ? spawn(process.execPath, [binPath, ...args], options)
-    : spawn(command, args, options);
+  const child = spawn(command, args, { stdio: "inherit", env });
   // The dev server is long-running and is stopped by signalling this wrapper.
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     process.on(signal, () => child.kill(signal));

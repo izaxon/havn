@@ -29,9 +29,24 @@ function defaultRoom(): string {
   return `room-${window.location.hostname.split(".")[0]}`.slice(0, 64);
 }
 
+function stablePeerId(room: string): string {
+  const fresh = () => `p-${Math.random().toString(36).slice(2, 10)}`;
+  if (typeof sessionStorage === "undefined") return fresh();
+  const key = `havn-peer:${room}`;
+  try {
+    const existing = sessionStorage.getItem(key);
+    if (existing && /^p-[a-z0-9]{4,24}$/.test(existing)) return existing;
+    const id = fresh();
+    sessionStorage.setItem(key, id);
+    return id;
+  } catch {
+    return fresh();
+  }
+}
+
 export function useP2PRoom(options: UseP2PRoomOptions = {}): P2PRoomHandle {
-  const [selfId] = useState(() => `p-${Math.random().toString(36).slice(2, 10)}`);
   const [room] = useState(() => options.room ?? defaultRoom());
+  const [selfId] = useState(() => stablePeerId(room));
   const [name] = useState(() => options.name ?? selfId);
   const [peers, setPeers] = useState<PeerInfo[]>([]);
   const [joined, setJoined] = useState(false);

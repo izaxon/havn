@@ -13,6 +13,7 @@ import {
   type NetMsg,
 } from "@/game/match";
 import { onGuestAction, onPublish, useGame } from "@/game/store-api";
+import { pullRelay, pushAction, pushSnapshot, hostKeyFor, savedSeatToken } from "@/game/relay";
 import { useT } from "@/game/i18n";
 import { useP2PRoom, type PeerInfo } from "@/lib/multiplayer";
 
@@ -38,6 +39,9 @@ function MatchBridgeInner({ room, name }: { room: string; name: string }) {
   const [claimedTick, bump] = useState(0);
   const lastSent = useRef(-1);
   const link = useMemo(() => inviteUrl(room), [room]);
+  const hostKey = useMemo(() => hostKeyFor(room), [room]);
+  const fullRef = useRef<string[]>([]);
+  const seenActions = useRef(new Set<string>());
   const live = useMemo(
     () => p2p.peers.filter((p) => p.connectionState === "connected"),
     [p2p.peers],
@@ -58,12 +62,13 @@ function MatchBridgeInner({ room, name }: { room: string; name: string }) {
     }
     if (role === "host") {
       const names = liveNow.map((p) => p.name).filter(Boolean);
-      const status = liveNow.length > 0 ? "live" : p2p.joined ? "waiting" : "connecting";
+      const someone = liveNow.length > 0 || claimed.size > 0;
+      const status = someone ? "live" : p2p.joined ? "waiting" : "connecting";
       const peerName = names[0] ?? null;
       const openHuman = board ? friendSeatIds(board.players).filter((id) => !claimed.has(id)) : [];
-      // Keep the invite up while a human chair is still empty so 3–4 player
-      // tables can keep handing the same link around.
-      const hideInvite = liveNow.length > 0 && cur.inviteOpen && openHuman.length === 0 && claimed.size > 0;
+      // Hide the invite once every human chair is taken, even if the
+      // peer-to-peer channel itself never opens.
+      const hideInvite = someone && cur.inviteOpen && openHuman.length === 0 && claimed.size > 0;
       if (cur.matchStatus === status && cur.matchPeerName === peerName && !hideInvite) return;
       setMatch({
         matchStatus: status,
@@ -104,6 +109,8 @@ function MatchBridgeInner({ room, name }: { room: string; name: string }) {
       }
       if (msg.t === "action") {
         if (role !== "host") return;
+        if (msg.id && seenActions.current.has(msg.id)) return;
+        if (msg.id) seenActions.current.add(msg.id);
         const seat = seatMap.current.get(from);
         const liveBoard = asBoard(useGame.getState().state);
         if (seat == null || !liveBoard || !seatMayPlay(liveBoard, seat, msg.action)) {
@@ -143,59 +150,38 @@ function MatchBridgeInner({ room, name }: { room: string; name: string }) {
   useEffect(() => {
     if (role !== "guest") return;
     return onGuestAction((action: unknown) => {
-      p2p.send({ t: "action", action: action as GameAction } satisfies NetMsg);
+      const gameAction = action as GameAction;
+      const id = crypto.randomUUID();
+      p2p.send({ t: "action", id, action: gameAction } satisfies NetMsg);
+      void pushAction(room, p2p.selfId, id, gameAction);
     });
-  }, [p2p, role]);
+  }, [p2p, role, room]);
 
   const greeted = useRef(new Set<string>());
   useEffect(() => {
     if (role !== "host" || !board) return;
-    const liveIds = new Set(live.map((p) => p.id));
-    let changed = false;
     let pending = false;
-    for (const [id, seat] of [...seatMap.current]) {
-      if (liveIds.has(id)) continue;
-      seatMap.current.delete(id);
-      greeted.current.delete(id);
-      releaseSeat(seat);
-      changed = true;
-    }
-    const taken = new Set(seatMap.current.values());
-    const open = friendSeatIds(board.players).filter((id) => !taken.has(id));
-    for (const peer of live) {
-      if (!seatMap.current.has(peer.id)) {
-        const seat = open.shift();
-        if (seat == null) {
-          if (!p2p.send({ t: "full" } satisfies NetMsg, peer.id)) pending = true;
-          else greeted.current.add(peer.id);
-          continue;
-        }
-        seatMap.current.set(peer.id, seat);
-        taken.add(seat);
-        claimSeat(seat, peer.name || i("mp.friend"));
-        changed = true;
-      }
-      if (greeted.current.has(peer.id)) continue;
-      const seat = seatMap.current.get(peer.id)!;
+    for (const [id, seat] of seatMap.current) {
+      const peer = p2p.peers.find((item) => item.id === id);
+      if (!peer || peer.connectionState !== "connected" || greeted.current.has(id)) continue;
       const g = useGame.getState().state;
       const revision = g ? ((g as { revision?: number }).revision ?? 0) : 0;
-      const helloOk = p2p.send({ t: "hello", name } satisfies NetMsg, peer.id);
-      const seatOk = p2p.send({ t: "seat", seat } satisfies NetMsg, peer.id);
+      const helloOk = p2p.send({ t: "hello", name } satisfies NetMsg, id);
+      const seatOk = p2p.send({ t: "seat", seat } satisfies NetMsg, id);
       const syncOk = g
-        ? p2p.send({ t: "sync", revision, state: g } satisfies NetMsg, peer.id)
+        ? p2p.send({ t: "sync", revision, state: g } satisfies NetMsg, id)
         : true;
       if (helloOk && seatOk && syncOk) {
-        greeted.current.add(peer.id);
+        greeted.current.add(id);
         lastSent.current = revision;
       } else {
         pending = true;
       }
     }
-    if (changed) bump((n) => n + 1);
     if (!pending) return;
     const timer = window.setTimeout(() => bump((n) => n + 1), 250);
     return () => window.clearTimeout(timer);
-  }, [p2p, live, board, role, name, claimSeat, releaseSeat, i, claimedTick]);
+  }, [p2p, board, role, name, claimedTick]);
 
   useEffect(() => {
     if (role !== "guest") return;
@@ -212,6 +198,106 @@ function MatchBridgeInner({ room, name }: { room: string; name: string }) {
     const timer = window.setTimeout(() => bump((n) => n + 1), 250);
     return () => window.clearTimeout(timer);
   }, [p2p, live, role, name, claimedTick]);
+
+  useEffect(() => {
+    if (role !== "host") return;
+    let cursor = 0;
+    let stopped = false;
+    const tick = async () => {
+      const pulled = await pullRelay(room, p2p.selfId, cursor, name);
+      if (stopped) return;
+      if (pulled.snapshot) {
+        const remoteRev = pulled.snapshot.revision ?? 0;
+        const local = useGame.getState().state as { revision?: number } | null;
+        if (!local || remoteRev > (local.revision ?? -1)) adoptRemote(pulled.snapshot.state);
+        const assigned = pulled.snapshot.seats;
+        const labels = pulled.snapshot.names ?? {};
+        let changed = false;
+        for (const [id, seat] of [...seatMap.current]) {
+          if (assigned[id] === seat) continue;
+          seatMap.current.delete(id);
+          greeted.current.delete(id);
+          releaseSeat(seat);
+          changed = true;
+        }
+        for (const [id, seat] of Object.entries(assigned)) {
+          if (seatMap.current.get(id) === seat) continue;
+          seatMap.current.set(id, seat);
+          const liveBoard = asBoard(useGame.getState().state);
+          const player = liveBoard?.players[seat];
+          const label = labels[id]?.trim() || i("mp.friend");
+          if (!player || player.isAi || player.name !== label) claimSeat(seat, label);
+          changed = true;
+        }
+        fullRef.current = pulled.snapshot.full;
+        if (changed) bump((n) => n + 1);
+        for (const item of pulled.actions) {
+          if (seenActions.current.has(item.clientId)) {
+            cursor = Math.max(cursor, item.id);
+            continue;
+          }
+          const seat = seatMap.current.get(item.from);
+          const liveBoard = asBoard(useGame.getState().state);
+          if (seat == null || !liveBoard) break;
+          seenActions.current.add(item.clientId);
+          cursor = Math.max(cursor, item.id);
+          if (!seatMayPlay(liveBoard, seat, item.action)) continue;
+          dispatch(item.action);
+        }
+      }
+      if (stopped) return;
+      const g = useGame.getState().state as { revision?: number } | null;
+      if (g) {
+        await pushSnapshot(room, p2p.selfId, hostKey, {
+          revision: g.revision ?? 0,
+          state: g,
+          seats: Object.fromEntries(seatMap.current),
+          full: fullRef.current,
+        });
+      }
+    };
+    void tick();
+    const timer = window.setInterval(() => void tick(), 700);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [role, room, hostKey, p2p, dispatch, name, i, claimSeat, releaseSeat]);
+
+  useEffect(() => {
+    if (role !== "guest") return;
+    let stopped = false;
+    const tick = async () => {
+      const pulled = await pullRelay(room, p2p.selfId, 0, name, savedSeatToken(room));
+      if (stopped) return;
+      if (pulled.error) {
+        setMatch({ matchStatus: "failed" });
+        return;
+      }
+      if (!pulled.snapshot) {
+        if (useGame.getState().matchStatus === "failed") setMatch({ matchStatus: "connecting" });
+        return;
+      }
+      const mine = pulled.snapshot.seats[p2p.selfId];
+      if (mine == null && pulled.snapshot.full.includes(p2p.selfId)) {
+        setMatch({ matchStatus: "full" });
+        return;
+      }
+      if (typeof mine === "number") {
+        setMatch({ viewerId: mine, matchStatus: "live", inviteOpen: false });
+      }
+      const cur = useGame.getState().state as { revision?: number } | null;
+      const revision = pulled.snapshot.revision ?? 0;
+      if (cur && revision <= (cur.revision ?? -1)) return;
+      adoptRemote(pulled.snapshot.state);
+    };
+    void tick();
+    const timer = window.setInterval(() => void tick(), 700);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [role, room, p2p, setMatch, adoptRemote, name]);
 
   const acting = board ? actingPlayerId(board) : HOST_SEAT;
   const waitingSeat =
@@ -371,6 +457,13 @@ function InviteCard({
       </div>
       <p className="mt-3 text-sm leading-relaxed text-muted">
         {failed ? i("mp.droppedBody") : connecting ? i("mp.connecting") : i("mp.waitingGuest")}
+      </p>
+      <p className="mt-2 text-sm leading-relaxed text-muted">{i("mp.guestLink")}</p>
+      <p className="mt-1 text-sm text-muted">
+        {i("mp.aiDocs")}{" "}
+        <a className="underline" href="/api/docs">
+          /api/docs
+        </a>
       </p>
       {seats.length > 0 ? (
         <ul className="mt-4 space-y-2" data-testid="havn-invite-roster">

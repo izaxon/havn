@@ -8,7 +8,7 @@ export type GameAction = { type: string; [key: string]: unknown };
 
 export type NetMsg =
   | { t: "sync"; revision: number; state: unknown }
-  | { t: "action"; action: GameAction }
+  | { t: "action"; action: GameAction; id?: string }
   | { t: "hello"; name: string }
   | { t: "seat"; seat: number }
   | { t: "full" }
@@ -75,9 +75,16 @@ export function friendSeatIds(players: SeatPlayer[]): number[] {
   return players.filter((p) => !p.isAi && p.id !== HOST_SEAT).map((p) => p.id);
 }
 
+export function tradePending(state: MatchBoard): number[] {
+  const offer = state.tradeOffer as { to?: number; pending?: number[] } | null | undefined;
+  if (!offer) return [];
+  if (Array.isArray(offer.pending) && offer.pending.length) return offer.pending;
+  return typeof offer.to === "number" && offer.to >= 0 ? [offer.to] : [];
+}
+
 export function actingPlayerId(state: MatchBoard): number {
   if (state.phase === "discard") return state.discardQueue?.[0] ?? state.currentPlayer;
-  if (state.tradeOffer) return state.tradeOffer.to;
+  if (state.tradeOffer) return tradePending(state)[0] ?? state.currentPlayer;
   return state.currentPlayer;
 }
 
@@ -85,6 +92,9 @@ export function actingPlayerId(state: MatchBoard): number {
 export function seatMayPlay(state: MatchBoard, seat: number, action: GameAction): boolean {
   if (seat < 0) return false;
   if (action.type === "cancelTrade") return state.tradeOffer?.from === seat;
-  if (action.type === "respondTrade") return state.tradeOffer?.to === seat;
+  if (action.type === "respondTrade") {
+    if (!tradePending(state).includes(seat)) return false;
+    return action.playerId == null || action.playerId === seat;
+  }
   return actingPlayerId(state) === seat;
 }

@@ -1,5 +1,5 @@
 /** Read-only view and legal-action list for an external assistant. Rules stay in the engine. */
-import { actingPlayerId, asBoard } from "./match";
+import { actingPlayerId, asBoard, tradePending } from "./match";
 import { tryAction } from "./game";
 
 const RESOURCES = ["wood", "brick", "wool", "grain", "ore"] as const;
@@ -62,11 +62,12 @@ export interface LiveState {
   discardQueue: number[];
   setupNeed: string;
   lastRoll: { d1: number; d2: number; total: number } | null;
-  tradeOffer: { from: number; to: number; give: Bag; want: Bag } | null;
+  tradeOffer: { from: number; to: number; pending?: number[]; give: Bag; want: Bag } | null;
   winnerId: number | null;
   turnNumber: number;
   log: { id: number; text: string }[];
   pendingFreeRoads: number;
+  pro?: boolean;
 }
 
 export interface SessionInfo {
@@ -154,6 +155,7 @@ export function yourTurn(state: LiveState, viewerId: number): boolean {
   if (viewerId < 0) return false;
   const board = asBoard(state);
   if (!board) return false;
+  if (tradePending(board).includes(viewerId)) return true;
   return actingPlayerId(board) === viewerId;
 }
 
@@ -164,7 +166,7 @@ function keep(state: LiveState, action: AgentAction, into: AgentAction[]) {
 function discards(have: Bag, need: number): Bag[] {
   const out: Bag[] = [];
   const walk = (index: number, left: number, acc: Bag) => {
-    if (out.length >= 24) return;
+    if (out.length >= 80) return;
     if (index === RESOURCES.length) {
       if (left === 0) out.push({ ...acc });
       return;
@@ -184,13 +186,19 @@ export function legalActions(state: LiveState, viewerId: number): AgentAction[] 
   if (viewerId < 0) return [];
   const offer = state.tradeOffer;
   if (offer) {
-    if (offer.from === viewerId && offer.to !== viewerId) return [{ type: "cancelTrade" }];
-    if (offer.to !== viewerId) return [];
-    const actions: AgentAction[] = [{ type: "respondTrade", accept: false }];
+    const pending =
+      Array.isArray(offer.pending) && offer.pending.length
+        ? offer.pending
+        : offer.to >= 0
+          ? [offer.to]
+          : [];
+    if (offer.from === viewerId) return [{ type: "cancelTrade" }];
+    if (!pending.includes(viewerId)) return [];
+    const actions: AgentAction[] = [{ type: "respondTrade", accept: false, playerId: viewerId }];
     const giver = state.players[offer.from];
-    const taker = state.players[offer.to];
+    const taker = state.players[viewerId];
     if (giver && taker && canPay(giver.resources, offer.give) && canPay(taker.resources, offer.want))
-      actions.unshift({ type: "respondTrade", accept: true });
+      actions.unshift({ type: "respondTrade", accept: true, playerId: viewerId });
     return actions.filter((action) => apply(state, action).ok);
   }
   if (!yourTurn(state, viewerId)) return [];
@@ -270,6 +278,17 @@ export function legalActions(state: LiveState, viewerId: number): AgentAction[] 
         keep(state, { type: "offerTrade", to: other.id, give: giveBag, want: wantBag }, actions);
       }
   }
+  if (state.players.filter((player) => player.id !== viewerId).length > 1) {
+    for (const give of RESOURCES)
+      for (const want of RESOURCES) {
+        if (give === want) continue;
+        const giveBag = emptyBag();
+        const wantBag = emptyBag();
+        giveBag[give] = 1;
+        wantBag[want] = 1;
+        keep(state, { type: "offerTrade", to: -1, give: giveBag, want: wantBag }, actions);
+      }
+  }
   keep(state, { type: "endTurn" }, actions);
   return actions;
 }
@@ -288,6 +307,7 @@ export function projectState(state: LiveState, session: SessionInfo) {
       yourTurn: yourTurn(state, viewerId),
     },
     phase: state.phase,
+    pro: !!state.pro,
     setupNeed: state.phase === "setup" ? state.setupNeed : null,
     turnNumber: state.turnNumber,
     revision: state.revision,
@@ -302,8 +322,13 @@ export function projectState(state: LiveState, session: SessionInfo) {
       ? {
           from: state.tradeOffer.from,
           to: state.tradeOffer.to,
-          youGive: viewerId === state.tradeOffer.to ? state.tradeOffer.want : state.tradeOffer.give,
-          youGet: viewerId === state.tradeOffer.to ? state.tradeOffer.give : state.tradeOffer.want,
+          pending: tradePending(asBoard(state)!),
+          youGive: tradePending(asBoard(state)!).includes(viewerId)
+            ? state.tradeOffer.want
+            : state.tradeOffer.give,
+          youGet: tradePending(asBoard(state)!).includes(viewerId)
+            ? state.tradeOffer.give
+            : state.tradeOffer.want,
         }
       : null,
     discardQueue: state.discardQueue ?? [],
@@ -336,6 +361,37 @@ export function projectState(state: LiveState, session: SessionInfo) {
   };
 }
 
+export function stepComputers(state: LiveState): LiveState {
+  let current = state;
+  for (let n = 0; n < 24; n++) {
+    if (current.phase === "gameOver" || current.winnerId != null) break;
+    const board = asBoard(current);
+    if (!board) break;
+    const actor = actingPlayerId(board);
+    const player = current.players[actor];
+    if (!player?.isAi) break;
+    const actions = legalActions(current, actor);
+    const pick =
+      actions.find((action) => action.type === "respondTrade" && action.accept === false) ??
+      actions.find((action) => action.type === "cancelTrade") ??
+      actions.find((action) => action.type === "roll") ??
+      actions.find((action) => action.type === "placeSettlement") ??
+      actions.find((action) => action.type === "placeRoad") ??
+      actions.find((action) => action.type === "discard") ??
+      actions.find((action) => action.type === "moveRobber") ??
+      actions.find((action) => action.type === "skipFreeRoad") ??
+      actions.find((action) => action.type === "endTurn") ??
+      actions[0];
+    if (!pick) break;
+    const result = apply(current, pick);
+    if (!result.ok) break;
+    const next = asLive(result.state);
+    if (!next || next.revision === current.revision) break;
+    current = next;
+  }
+  return current;
+}
+
 export function recentEvents(state: LiveState, session: SessionInfo) {
   return {
     ok: true as const,
@@ -355,3 +411,240 @@ export function normalizeAction(input: unknown): AgentAction | null {
   if (typeof type !== "string" || !type) return null;
   return action as AgentAction;
 }
+
+const TERRAIN_SV: Record<string, string> = {
+  wood: "skog",
+  brick: "lera",
+  wool: "ull",
+  grain: "vete",
+  ore: "malm",
+  desert: "öken",
+};
+
+const PLAYER_COLORS = ["#b42318", "#2b5f8a", "#e8dcc4", "#1f6b56"];
+const PLAYER_COLOR_NAMES = ["karmosin", "havsblå", "linne", "furugrön"];
+
+export interface BoardRefs {
+  hex: Map<string, string>;
+  hexBack: Map<string, string>;
+  junction: Map<string, string>;
+  junctionBack: Map<string, string>;
+  edge: Map<string, string>;
+  edgeBack: Map<string, string>;
+}
+
+function shortIds(ids: string[], prefix: string): Map<string, string> {
+  const map = new Map<string, string>();
+  [...ids].sort().forEach((id, index) => map.set(id, `${prefix}${index + 1}`));
+  return map;
+}
+
+export function boardRefs(state: LiveState): BoardRefs {
+  const hex = shortIds(state.board.hexes.map((item) => item.id), "h");
+  const junction = shortIds(state.board.vertices.map((item) => item.id), "j");
+  const edge = shortIds(state.board.edges.map((item) => item.id), "e");
+  const flip = (map: Map<string, string>) => new Map([...map].map(([k, v]) => [v, k]));
+  return { hex, hexBack: flip(hex), junction, junctionBack: flip(junction), edge, edgeBack: flip(edge) };
+}
+
+export function publicPhase(state: LiveState): string {
+  if (state.phase === "gameOver") return "ended";
+  if (state.tradeOffer) return "trade";
+  if (state.phase === "setup" || state.phase === "roll" || state.phase === "main") return state.phase;
+  if (state.phase === "discard" || state.phase === "robber") return state.phase;
+  if (state.phase === "roadBuilding") return "main";
+  return state.phase;
+}
+
+function tradeRate(state: LiveState, seat: number, resource: string): number {
+  let generic = false;
+  let specific = false;
+  for (const vertex of state.board.vertices) {
+    if (vertex.building?.player !== seat || !vertex.port) continue;
+    if (vertex.port.kind === resource) specific = true;
+    if (vertex.port.kind === "generic") generic = true;
+  }
+  return specific ? 2 : generic ? 3 : 4;
+}
+
+function annotate(state: LiveState, refs: BoardRefs, action: AgentAction): AgentAction {
+  const next: AgentAction = { ...action };
+  if (typeof next.vertexId === "string") next.junction = refs.junction.get(next.vertexId) ?? next.vertexId;
+  if (typeof next.edgeId === "string") next.edge = refs.edge.get(next.edgeId) ?? next.edgeId;
+  if (typeof next.hexId === "string") next.hex = refs.hex.get(next.hexId) ?? next.hexId;
+  if (next.type === "bankTrade" && typeof next.give === "string") {
+    next.ratio = tradeRate(state, state.currentPlayer, next.give);
+  }
+  if (next.type === "respondTrade" || next.type === "cancelTrade") next.offerId = state.revision;
+  return next;
+}
+
+export function resolveAction(state: LiveState, action: AgentAction): AgentAction {
+  const refs = boardRefs(state);
+  const type = action.type === "buildRoad" ? "placeRoad" : action.type;
+  const next: AgentAction = { ...action, type };
+  if (typeof next.junction === "string" && typeof next.vertexId !== "string") {
+    next.vertexId = refs.junctionBack.get(next.junction) ?? next.junction;
+  }
+  if (typeof next.edge === "string" && typeof next.edgeId !== "string") {
+    next.edgeId = refs.edgeBack.get(next.edge) ?? next.edge;
+  }
+  if (typeof next.hex === "string" && typeof next.hexId !== "string") {
+    next.hexId = refs.hexBack.get(next.hex) ?? next.hex;
+  }
+  return next;
+}
+
+export function describeAttention(state: LiveState, seat: number) {
+  const yours = yourTurn(state, seat);
+  const offer = state.tradeOffer;
+  const from = offer ? state.players[offer.from] : undefined;
+  const pending = offer ? tradePending(asBoard(state)!) : [];
+  const toName = pending
+    .map((id) => state.players[id]?.name)
+    .filter(Boolean)
+    .join(", ");
+  if (state.phase === "gameOver" || state.winnerId != null) {
+    const winner = state.players[state.winnerId ?? 0];
+    return { reason: "game_over", yourTurn: false, notice: `${winner?.name ?? ""} vann` };
+  }
+  if (offer && pending.includes(seat)) {
+    return { reason: "trade_offer", yourTurn: true, notice: `${from?.name ?? ""} erbjuder ett byte` };
+  }
+  if (offer) {
+    return {
+      reason: "trade_waiting",
+      yourTurn: false,
+      notice: `${from?.name ?? ""} väntar på svar från ${toName}`,
+    };
+  }
+  const actor = state.players[actingPlayerId(asBoard(state)!)];
+  if (!yours) return { reason: "waiting", yourTurn: false, notice: `Väntar på ${actor?.name ?? ""}` };
+  if (state.phase === "discard") return { reason: "discard", yourTurn: true, notice: "Släng kort" };
+  if (state.phase === "robber") return { reason: "robber", yourTurn: true, notice: "Flytta rövaren" };
+  if (state.phase === "roll") return { reason: "your_turn", yourTurn: true, notice: "Din tur: slå tärning" };
+  if (state.phase === "setup") return { reason: "your_turn", yourTurn: true, notice: "Din tur: grundlägg" };
+  return { reason: "your_turn", yourTurn: true, notice: "Din tur" };
+}
+
+function hexBlurb(state: LiveState, hexId: string): string {
+  const hex = state.board.hexes.find((item) => item.id === hexId);
+  if (!hex) return hexId;
+  const name = TERRAIN_SV[hex.terrain] ?? hex.terrain;
+  if (hex.terrain === "desert" || hex.number == null) return name;
+  return `${hex.number} ${name}`;
+}
+
+export function apiView(state: LiveState, seat: number) {
+  const refs = boardRefs(state);
+  const you = state.players[seat];
+  const phase = publicPhase(state);
+  const junctions = state.board.vertices.map((vertex) => {
+    const id = refs.junction.get(vertex.id) ?? vertex.id;
+    const text = (vertex.hexIds ?? []).map((hexId) => hexBlurb(state, hexId)).join(" / ");
+    return {
+      id,
+      ref: vertex.id,
+      hexes: (vertex.hexIds ?? []).map((hexId) => refs.hex.get(hexId) ?? hexId),
+      owner: vertex.building ? vertex.building.player : null,
+      building: vertex.building?.type ?? null,
+      port: vertex.port?.kind ?? null,
+      text: `${id}: ${text || "hav"}`,
+    };
+  });
+  const edges = state.board.edges.map((edge) => ({
+    id: refs.edge.get(edge.id) ?? edge.id,
+    ref: edge.id,
+    from: refs.junction.get(edge.a) ?? edge.a,
+    to: refs.junction.get(edge.b) ?? edge.b,
+    owner: edge.road ? edge.road.player : null,
+  }));
+  const ports = state.board.edges
+    .filter((edge) => edge.port)
+    .map((edge, index) => ({
+      id: `p${index + 1}`,
+      type: edge.port!.kind,
+      rate: edge.port!.kind === "generic" ? "3:1" : "2:1",
+      junctions: [refs.junction.get(edge.a) ?? edge.a, refs.junction.get(edge.b) ?? edge.b],
+    }));
+  const attention = describeAttention(state, seat);
+  return {
+    ok: true as const,
+    game: "Havn",
+    roomSeat: seat,
+    you: seat,
+    yourTurn: attention.yourTurn,
+    attention,
+    needsResponse: attention.reason === "trade_offer" || attention.reason === "discard" || attention.reason === "robber",
+    costs: COSTS,
+    portRates: Object.fromEntries(RESOURCES.map((resource) => [resource, tradeRate(state, seat, resource)])),
+    phase,
+    pro: !!state.pro,
+    enginePhase: state.phase,
+    setupNeed: state.phase === "setup" ? state.setupNeed : null,
+    pendingFreeRoads: state.phase === "roadBuilding" ? state.pendingFreeRoads : 0,
+    currentPlayer: actingPlayerId(asBoard(state)!) ,
+    round: state.turnNumber,
+    revision: state.revision,
+    lastRoll: state.lastRoll,
+    winnerId: state.winnerId,
+    pendingTrade: state.tradeOffer
+      ? {
+          offerId: state.revision,
+          from: state.tradeOffer.from,
+          fromName: state.players[state.tradeOffer.from]?.name ?? null,
+          to: state.tradeOffer.to,
+          toName:
+            (state.tradeOffer.pending?.length ?? 0) > 1
+              ? state.tradeOffer.pending!.map((id) => state.players[id]?.name).filter(Boolean).join(", ")
+              : (state.players[state.tradeOffer.to]?.name ?? null),
+          pending: state.tradeOffer.pending ?? (state.tradeOffer.to >= 0 ? [state.tradeOffer.to] : []),
+          give: state.tradeOffer.give,
+          want: state.tradeOffer.want,
+        }
+      : null,
+    log: (state.log ?? []).slice(-20).map((line) => ({ id: line.id, text: line.text })),
+    players: state.players.map((player) => {
+      const mine = player.id === seat;
+      const shown = publicPoints(state, player);
+      return {
+        id: player.id,
+        name: player.name,
+        color: PLAYER_COLORS[player.colorIndex] ?? PLAYER_COLORS[0],
+        colorName: PLAYER_COLOR_NAMES[player.colorIndex] ?? PLAYER_COLOR_NAMES[0],
+        isYou: mine,
+        isComputer: player.isAi,
+        points: mine ? shown + (player.vpCards ?? 0) : shown,
+        hiddenPoints: mine ? (player.vpCards ?? 0) : null,
+        cardCount: total(player.resources) + (player.hand?.length ?? 0) + (player.newHand?.length ?? 0),
+        resources: mine ? { ...emptyBag(), ...player.resources } : { hidden: true, total: total(player.resources) },
+        developmentCards: mine
+          ? { playable: [...(player.hand ?? [])], boughtThisTurn: [...(player.newHand ?? [])] }
+          : { hidden: true, count: (player.hand?.length ?? 0) + (player.newHand?.length ?? 0) },
+        longestRoad: player.hasLongestRoad,
+        largestArmy: player.hasLargestArmy,
+        knightsPlayed: player.knightsPlayed,
+      };
+    }),
+    board: {
+      robber: refs.hex.get(state.robberHexId) ?? state.robberHexId,
+      hexes: state.board.hexes.map((hex) => ({
+        id: refs.hex.get(hex.id) ?? hex.id,
+        ref: hex.id,
+        resource: hex.terrain,
+        number: hex.number,
+        robber: hex.id === state.robberHexId,
+        q: hex.q,
+        r: hex.r,
+      })),
+      junctions,
+      edges,
+      ports,
+      text: junctions.map((item) => item.text),
+    },
+    bank: { ...emptyBag(), ...state.bank },
+    yourName: you?.name ?? null,
+    legalActions: legalActions(state, seat).map((action) => annotate(state, refs, action)),
+  };
+}
+

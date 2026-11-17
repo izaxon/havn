@@ -10,11 +10,36 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiActionRouteImport } from './routes/api/action'
+import { Route as ApiDocsRouteImport } from './routes/api/docs'
+import { Route as ApiEventsRouteImport } from './routes/api/events'
+import { Route as ApiGameRouteImport } from './routes/api/game'
 import { Route as ApiRtcRouteImport } from './routes/api/rtc'
+import { Route as ApiSeatRouteImport } from './routes/api/seat'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiActionRoute = ApiActionRouteImport.update({
+  id: '/api/action',
+  path: '/api/action',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDocsRoute = ApiDocsRouteImport.update({
+  id: '/api/docs',
+  path: '/api/docs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiEventsRoute = ApiEventsRouteImport.update({
+  id: '/api/events',
+  path: '/api/events',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGameRoute = ApiGameRouteImport.update({
+  id: '/api/game',
+  path: '/api/game',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiRtcRoute = ApiRtcRouteImport.update({
@@ -22,31 +47,78 @@ const ApiRtcRoute = ApiRtcRouteImport.update({
   path: '/api/rtc',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiSeatRoute = ApiSeatRouteImport.update({
+  id: '/api/seat',
+  path: '/api/seat',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/action': typeof ApiActionRoute
+  '/api/docs': typeof ApiDocsRoute
+  '/api/events': typeof ApiEventsRoute
+  '/api/game': typeof ApiGameRoute
   '/api/rtc': typeof ApiRtcRoute
+  '/api/seat': typeof ApiSeatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/action': typeof ApiActionRoute
+  '/api/docs': typeof ApiDocsRoute
+  '/api/events': typeof ApiEventsRoute
+  '/api/game': typeof ApiGameRoute
   '/api/rtc': typeof ApiRtcRoute
+  '/api/seat': typeof ApiSeatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/action': typeof ApiActionRoute
+  '/api/docs': typeof ApiDocsRoute
+  '/api/events': typeof ApiEventsRoute
+  '/api/game': typeof ApiGameRoute
   '/api/rtc': typeof ApiRtcRoute
+  '/api/seat': typeof ApiSeatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/rtc'
+  fullPaths:
+    | '/'
+    | '/api/action'
+    | '/api/docs'
+    | '/api/events'
+    | '/api/game'
+    | '/api/rtc'
+    | '/api/seat'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/rtc'
-  id: '__root__' | '/' | '/api/rtc'
+  to:
+    | '/'
+    | '/api/action'
+    | '/api/docs'
+    | '/api/events'
+    | '/api/game'
+    | '/api/rtc'
+    | '/api/seat'
+  id:
+    | '__root__'
+    | '/'
+    | '/api/action'
+    | '/api/docs'
+    | '/api/events'
+    | '/api/game'
+    | '/api/rtc'
+    | '/api/seat'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiActionRoute: typeof ApiActionRoute
+  ApiDocsRoute: typeof ApiDocsRoute
+  ApiEventsRoute: typeof ApiEventsRoute
+  ApiGameRoute: typeof ApiGameRoute
   ApiRtcRoute: typeof ApiRtcRoute
+  ApiSeatRoute: typeof ApiSeatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -58,6 +130,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/action': {
+      id: '/api/action'
+      path: '/api/action'
+      fullPath: '/api/action'
+      preLoaderRoute: typeof ApiActionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/docs': {
+      id: '/api/docs'
+      path: '/api/docs'
+      fullPath: '/api/docs'
+      preLoaderRoute: typeof ApiDocsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/events': {
+      id: '/api/events'
+      path: '/api/events'
+      fullPath: '/api/events'
+      preLoaderRoute: typeof ApiEventsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/game': {
+      id: '/api/game'
+      path: '/api/game'
+      fullPath: '/api/game'
+      preLoaderRoute: typeof ApiGameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/rtc': {
       id: '/api/rtc'
       path: '/api/rtc'
@@ -65,12 +165,24 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiRtcRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/seat': {
+      id: '/api/seat'
+      path: '/api/seat'
+      fullPath: '/api/seat'
+      preLoaderRoute: typeof ApiSeatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiActionRoute: ApiActionRoute,
+  ApiDocsRoute: ApiDocsRoute,
+  ApiEventsRoute: ApiEventsRoute,
+  ApiGameRoute: ApiGameRoute,
   ApiRtcRoute: ApiRtcRoute,
+  ApiSeatRoute: ApiSeatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

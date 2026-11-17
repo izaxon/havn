@@ -1,0 +1,19 @@
+Lägg till ett enkelt AI-/bot-API i Havn så att en AI-agent kan spela utan att klicka i UI:t.
+
+Krav:
+1. Läsläge: GET /api/game?room=<kod>&seat=<token> returnerar hela speltillståndet som JSON:
+   - phase (setup/roll/main/robber/discard/trade/ended), currentPlayer, round, lastRoll
+   - board: hexar med id, resurs, nummer, robber; junctions med id, grannhexar, ägare/byggnad; edges med id, från/till-junction, ägare; hamnar med typ och junctions
+   - players: namn, färg, poäng, antal kort, längsta väg, största armé (bara egen hand i detalj)
+   - legalActions: lista med exakt de drag som är tillåtna just nu, t.ex. {type:"placeSettlement", junction:"j23"}, {type:"buildRoad", edge:"e41"}, {type:"roll"}, {type:"endTurn"}, {type:"bankTrade", give:"wood", get:"ore", ratio:4}, {type:"respondTrade", offerId, accept:true|false}
+   - pendingTrade om ett byte väntar på svar
+   - log: senaste 20 händelserna
+2. Skrivläge: POST /api/action {room, seat, action} där action är ett objekt ur legalActions. Svara med nytt tillstånd eller ett tydligt fel (not_your_turn, illegal_action).
+3. Platstoken: när någon joinar får de en hemlig seat-token (visa den i UI:t under "AI-läge" med kopieringsknapp). En AI använder token för att spela den platsen. En join får aldrig ta en plats som redan är upptagen, och samma token ska alltid ge samma plats.
+4. Lång-poll eller SSE: GET /api/events?room=&seat=&since=<n> som returnerar när något ändrats, så att AI:n vet när det är dess tur.
+5. Stabila id:n för hexar, junctions och edges som är desamma för alla klienter, plus en liten textkarta i svaret (t.ex. "j23: 8 lera / 10 vete / 2 skog") så att en språkmodell förstår brädet.
+6. Byten och rövare ska gå att svara på via API:t (acceptera/neka, flytta rövaren, välja vem man stjäl från, kasta kort vid sju).
+7. Dokumentera API:t på /api/docs eller i Rules-dialogen, med ett exempel på en hel tur.
+8. Ingen inloggning utöver seat-token. Rate-limita gärna per token.
+
+Mål: en AI ska kunna spela en hel match bara genom att läsa /api/game, välja ett drag ur legalActions och skicka det till /api/action.
